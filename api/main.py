@@ -236,3 +236,29 @@ def _run_session(session_id: str):
     except Exception as e:
         logger.error("Session %s failed: %s", session_id[:8], e, exc_info=True)
         _running_tasks[session_id] = "error"
+from fastapi import FastAPI, HTTPException
+from nexo.core.orquestador import Orquestador
+
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"message": "NEXO MultiAgent System API"}
+
+@app.post("/start_mission")
+async def start_mission(mission: str):
+    orquestrador = Orquestador()
+    orquestrador.start_mission(mission)
+    return {"status": "success", "message": f"Misión {mission} iniciada"}
+
+@app.get("/agents/status")
+async def get_agent_status():
+    orquestrador = Orquestador()
+    return {
+        "status": "ok",
+        "data": orquestrador.agent_status
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
