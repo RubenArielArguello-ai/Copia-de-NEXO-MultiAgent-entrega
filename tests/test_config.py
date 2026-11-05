@@ -58,3 +58,19 @@ def test_required_fields():
     
     for agent, config in PROVIDER_CONFIG.items():
         assert all(field in config for field in required_fields), f"Falta campo obligatorio en configuración de {agent}"
+
+def test_provider_config_consistency():
+    """Test consistency between provider configurations"""
+    from nexo.core.config import PROVIDER_CONFIG
+    
+    # Verificar que todos los modelos estén correctamente asignados
+    model_assertions = {
+        "ANALYST": ("ollama", "gemma4:12b-mlx"),
+        "EXECUTOR": ("ollama", "qwen2.5-coder:7b"),
+        "STRATEGIST": ("ollama", "gemma4:12b-mlx"),
+        "EVALUATOR": ("ollama", "gemma4:12b-mlx")
+    }
+    
+    for agent, (provider_type, model) in model_assertions.items():
+        assert PROVIDER_CONFIG[agent]["type"] == provider_type, f"Proveedor incorrecto para {agent}"
+        assert PROVIDER_CONFIG[agent]["model"] == model, f"Modelo incorrecto para {agent}"
