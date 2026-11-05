@@ -2,6 +2,37 @@
 
 > Sistema multiagente para diagnóstico y resolución de problemas técnicos, construido como prototipo académico para una Diplomatura en Inteligencia Artificial.
 
+## Setup y Configuración Inicial
+
+### Crear entorno virtual
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # En macOS/Linux o powershell start ./.env (Windows)
+```
+
+### Instalar dependencias
+```bash
+pip install -r requirements.txt
+```
+
+### Configurar proveedores de LLM
+Editar `nexo/core/config.py`:
+```python
+PROVIDER_CONFIG = {
+    "ANALYST":    {"type": "ollama", "model": "gemma4:12b-mlx"},
+    "EXECUTOR":   {"type": "ollama", "model": "qwen2.5-coder:7b"},
+    "STRATEGIST": {"type": "ollama", "model": "gemma4:12b-mlx"},
+    "EVALUATOR":  {"type": "ollama", "model": "gemma4:12b-mlx"},
+    "orquestador":{"type": "ollama", "model": "gemma4:12b-mlx"}
+}
+```
+
+### Inicializar servidor API
+```bash
+uvicorn api.main:app --reload --port 8000
+# Abrir http://localhost:8000/docs en el navegador para ver la documentación de API
+```
+
 ---
 
 ## Qué es NEXO
