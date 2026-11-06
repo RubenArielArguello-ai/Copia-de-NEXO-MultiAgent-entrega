@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  orquestador:
+    image: nexo/orquestador:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - NEXO_ENV=production
+    networks:
+      - nexo-network
+
+  ollama-provider:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    networks:
+      - nexo-network
+
+networks:
+  nexo-network:
+    driver: bridge
