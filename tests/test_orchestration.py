@@ -9,7 +9,7 @@ from nexo.core.message_bus import MessageBus
 class TestOrchestration(unittest.TestCase):
     def setUp(self):
         self.bus = MessageBus("test_session")
-        self.orquestrator = Orquestrador(self.bus)
+        self.orquestrator = Orquestrator(self.bus)
         self.analyst = AnalystAgent(None, self.bus)
         self.strategist = StrategistAgent(None, self.bus)
         self.executor = ExecutorAgent(None, self.bus)
