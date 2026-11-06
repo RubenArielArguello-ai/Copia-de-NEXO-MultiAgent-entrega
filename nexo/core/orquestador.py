@@ -1,5 +1,14 @@
-from typing import Dict, Any
-from nexo.core.config import PROVIDER_CONFIG
+from typing import Dict, Any, Optional
+from nexo.core.config import ConfigManager
+
+class ConfigManagerSingleton:
+    _instance = None
+
+    @classmethod
+    def getInstance(cls):
+        if cls._instance is None:
+            cls._instance = ConfigManager()
+        return cls._instance
 from nexo.core.schemas.messages import (
     AgentMessage,
     OrquestradorCommand,
@@ -10,10 +19,11 @@ class Orquestador:
     """Main coordinator agent managing the cognitive process"""
     
     def __init__(self):
+        self.config = ConfigManagerSingleton.getInstance()
         self.agent_status: Dict[str, str] = {}
         self.current_mission: str = ""
         self.iteration_count = 0
-        self.max_iterations = 10  # From ConfigManager
+        self.max_iterations = self.config.get_provider_config("orquestador").get("temperature", 1.0)
         
     def start_mission(self, mission: str) -> None:
         """Initialize and distribute the mission to all agents"""
@@ -21,12 +31,22 @@ class Orquestador:
         self.iteration_count = 0
         self.agent_status = {agent: "idle" for agent in PROVIDER_CONFIG.keys()}
         
-        # Distribute initial instructions
-        for agent in ["ANALYST", "STRATEGIST"]:
+        # Obtener todos los agentes disponibles
+        agents = [agent for agent in self.config.PROVIDER_CONFIG.keys() if agent != "orquestador"]
+        
+        # Distribuir órdenes iniciales basadas en los roles
+        for agent in agents:
+            role = agent.replace("AGENT_", "").lower()
+            command_data = {
+                "mission": mission,
+                "role": role,
+                "model_settings": self.config.get_provider_config(agent).get("model_settings", {})
+            }
+            
             self.send_command(OrquestradorCommand(
                 to=agent,
                 action="initiate",
-                data={"mission": mission}
+                data=command_data
             ))
     
     def send_command(self, command: OrquestradorCommand) -> None:
