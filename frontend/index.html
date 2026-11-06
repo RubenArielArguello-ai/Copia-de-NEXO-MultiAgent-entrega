@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEXO — Sistema Cognitivo Multiagente</title>
+  <meta name="description" content="Dashboard del sistema multiagente NEXO: orquestador cognitivo con agentes especializados, comunicación estructurada y control de coherencia." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════════════════════ -->
+<header class="nexo-header">
+  <div class="header-brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="20" r="18" stroke="url(#grad1)" stroke-width="2"/>
+        <circle cx="20" cy="8"  r="4" fill="url(#grad1)"/>
+        <circle cx="8"  cy="29" r="4" fill="url(#grad1)"/>
+        <circle cx="32" cy="29" r="4" fill="url(#grad1)"/>
+        <line x1="20" y1="12" x2="8"  y2="25" stroke="url(#grad1)" stroke-width="1.5"/>
+        <line x1="20" y1="12" x2="32" y2="25" stroke="url(#grad1)" stroke-width="1.5"/>
+        <line x1="8"  y1="29" x2="32" y2="29" stroke="url(#grad1)" stroke-width="1.5"/>
+        <defs>
+          <linearGradient id="grad1" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#7c3aed"/>
+            <stop offset="100%" stop-color="#06b6d4"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+    <div>
+      <h1 class="brand-name">NEXO</h1>
+      <span class="brand-sub">Sistema Cognitivo Multiagente</span>
+    </div>
+  </div>
+  <div class="header-status" id="system-status">
+    <span class="status-dot idle"></span>
+    <span id="status-text">Listo</span>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MAIN LAYOUT
+══════════════════════════════════════════════════════════════ -->
+<main class="nexo-layout">
+
+  <!-- ── Columna izquierda: Input + Agents ── -->
+  <aside class="sidebar">
+
+    <!-- Panel de solicitud -->
+    <section class="panel" id="request-panel">
+      <h2 class="panel-title">Nueva Solicitud</h2>
+      <textarea
+        id="request-input"
+        class="request-textarea"
+        placeholder="Describí el problema técnico… ej: Mi computadora no se conecta a Internet"
+        rows="4"
+      ></textarea>
+      <button id="run-btn" class="btn btn-primary" onclick="startSession()">
+        <span class="btn-icon">▶</span> Ejecutar
+      </button>
+    </section>
+
+    <!-- Panel de Coherence Score (NCM) -->
+    <section class="panel" id="ncm-panel">
+      <h2 class="panel-title">
+        <span class="ncm-badge">NCM</span>
+        Coherencia Cognitiva
+      </h2>
+      <div class="coherence-display">
+        <div class="coherence-ring" id="coherence-ring">
+          <svg viewBox="0 0 80 80">
+            <circle class="ring-bg"    cx="40" cy="40" r="34" />
+            <circle class="ring-fill"  cx="40" cy="40" r="34" id="ring-fill" />
+          </svg>
+          <span class="ring-score" id="ring-score">—</span>
+        </div>
+        <div class="coherence-info">
+          <div class="ci-label">Score</div>
+          <div class="ci-value" id="coherence-value">—</div>
+          <div class="ci-label" style="margin-top:8px">Anomalías</div>
+          <div class="ci-value" id="anomaly-count">—</div>
+        </div>
+      </div>
+      <div id="anomaly-list" class="anomaly-list"></div>
+    </section>
+
+    <!-- Panel de Agentes -->
+    <section class="panel" id="agents-panel">
+      <h2 class="panel-title">Agentes</h2>
+      <div class="agents-grid">
+        <div class="agent-card" id="agent-ORCHESTRATOR" data-agent="ORCHESTRATOR">
+          <div class="agent-avatar orchestrator">O</div>
+          <div class="agent-info">
+            <div class="agent-name">Orquestador</div>
+            <div class="agent-model">gemma4:12b-mlx</div>
+          </div>
+          <div class="agent-status-dot idle" id="dot-ORCHESTRATOR"></div>
+        </div>
+        <div class="agent-card" id="agent-ANALYST" data-agent="ANALYST">
+          <div class="agent-avatar analyst">A</div>
+          <div class="agent-info">
+            <div class="agent-name">Analista</div>
+            <div class="agent-model">gemma4:12b-mlx</div>
+          </div>
+          <div class="agent-status-dot idle" id="dot-ANALYST"></div>
+        </div>
+        <div class="agent-card" id="agent-STRATEGIST" data-agent="STRATEGIST">
+          <div class="agent-avatar strategist">E</div>
+          <div class="agent-info">
+            <div class="agent-name">Estratega</div>
+            <div class="agent-model">gemma4:12b-mlx</div>
+          </div>
+          <div class="agent-status-dot idle" id="dot-STRATEGIST"></div>
+        </div>
+        <div class="agent-card" id="agent-EXECUTOR" data-agent="EXECUTOR">
+          <div class="agent-avatar executor">X</div>
+          <div class="agent-info">
+            <div class="agent-name">Ejecutor</div>
+            <div class="agent-model">qwen2.5-coder:7b</div>
+          </div>
+          <div class="agent-status-dot idle" id="dot-EXECUTOR"></div>
+        </div>
+        <div class="agent-card" id="agent-EVALUATOR" data-agent="EVALUATOR">
+          <div class="agent-avatar evaluator">V</div>
+          <div class="agent-info">
+            <div class="agent-name">Evaluador</div>
+            <div class="agent-model">gemma4:12b-mlx</div>
+          </div>
+          <div class="agent-status-dot idle" id="dot-EVALUATOR"></div>
+        </div>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ── Columna derecha: Plan + Mensajes + Resultado ── -->
+  <div class="main-content">
+
+    <!-- Panel de Plan de Ejecución -->
+    <section class="panel" id="plan-panel">
+      <h2 class="panel-title">Plan de Ejecución</h2>
+      <div id="plan-tasks" class="plan-tasks">
+        <div class="empty-state">El plan aparecerá aquí una vez que el Estratega lo genere.</div>
+      </div>
+    </section>
+
+    <!-- Panel de Mensajes Inter-Agente -->
+    <section class="panel messages-panel" id="messages-panel">
+      <div class="panel-header-row">
+        <h2 class="panel-title">Mensajes Inter-Agente</h2>
+        <span class="msg-count" id="msg-count">0 mensajes</span>
+      </div>
+      <div id="messages-list" class="messages-list">
+        <div class="empty-state">Los mensajes entre agentes aparecerán aquí.</div>
+      </div>
+    </section>
+
+    <!-- Panel de Resultado Final -->
+    <section class="panel result-panel" id="result-panel" style="display:none">
+      <h2 class="panel-title">Resultado Final</h2>
+      <div id="result-content" class="result-content"></div>
+      <div id="metrics-row" class="metrics-row"></div>
+    </section>
+
+  </div>
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════
+     PHASE INDICATOR
+══════════════════════════════════════════════════════════════ -->
+<div class="phase-bar" id="phase-bar">
+  <div class="phase-step" id="ph-ANALYSIS">Análisis</div>
+  <div class="phase-arrow">→</div>
+  <div class="phase-step" id="ph-PLANNING">Planificación</div>
+  <div class="phase-arrow">→</div>
+  <div class="phase-step" id="ph-EXECUTION">Ejecución</div>
+  <div class="phase-arrow">→</div>
+  <div class="phase-step" id="ph-EVALUATION">Evaluación</div>
+  <div class="phase-arrow">→</div>
+  <div class="phase-step" id="ph-DELIVERY">Entrega</div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
