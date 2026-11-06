@@ -48,6 +48,24 @@ class Orquestador:
                 action="initiate",
                 data=command_data
             ))
+        
+        # Obtener todos los agentes disponibles
+        agents = [agent for agent in self.config.PROVIDER_CONFIG.keys() if agent != "orquestador"]
+        
+        # Distribuir órdenes iniciales basadas en los roles
+        for agent in agents:
+            role = agent.replace("AGENT_", "").lower()
+            command_data = {
+                "mission": mission,
+                "role": role,
+                "model_settings": self.config.get_provider_config(agent).get("model_settings", {})
+            }
+            
+            self.send_command(OrquestradorCommand(
+                to=agent,
+                action="initiate",
+                data=command_data
+            ))
     
     def send_command(self, command: OrquestradorCommand) -> None:
         """Send a command to a specific agent"""
