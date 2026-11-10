@@ -37,3 +37,4 @@ ENV/
 .terraform/
 tmp/
 .DS_Store
+nexo_data.db
