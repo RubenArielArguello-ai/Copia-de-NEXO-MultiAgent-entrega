@@ -1,15 +1,15 @@
 import unittest
-from nexo.core.orquestador import Orquestrator
-from nexo.agents.analyst_agent import AnalystAgent
-from nexo.agents.strategist_agent import StrategistAgent
-from nexo.agents.executor_agent import ExecutorAgent
-from nexo.agents.evaluator_agent import EvaluatorAgent
+from nexo.core.orchestrator import Orchestrator
+from nexo.agents.analyst import AnalystAgent
+from nexo.agents.strategist import StrategistAgent
+from nexo.agents.executor import ExecutorAgent
+from nexo.agents.evaluator import EvaluatorAgent
 from nexo.core.message_bus import MessageBus
 
 class TestOrchestration(unittest.TestCase):
     def setUp(self):
         self.bus = MessageBus("test_session")
-        self.orquestrator = Orquestrator(self.bus)
+        self.orquestrator = Orchestrator(self.bus)
         self.analyst = AnalystAgent(None, self.bus)
         self.strategist = StrategistAgent(None, self.bus)
         self.executor = ExecutorAgent(None, self.bus)
