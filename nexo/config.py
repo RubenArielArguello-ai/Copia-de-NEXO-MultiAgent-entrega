@@ -12,17 +12,32 @@ from pathlib import Path
 from typing import Any
 
 # ─────────────────────────────────────────────
+#  Validación de entradas y manejo seguro de variables de entorno
+# ─────────────────────────────────────────────
+
+def validate_env_var(var_name: str, default_value: Any = None) -> Any:
+    """Valida una variable de entorno y devuelve su valor."""
+    value = os.getenv(var_name)
+    if value is not None:
+        try:
+            # Attempt to convert the value to a specific type
+            return type(default_value)(value)
+        except ValueError:
+            print(f"Warning: Invalid value for {var_name}. Using default.")
+            return default_value
+    else:
+        print(f"Warning: Missing environment variable {var_name}. Using default.")
+        return default_value
+
+# ─────────────────────────────────────────────
 #  Entorno y URLs
 # ─────────────────────────────────────────────
-OLLAMA_BASE_URL: str = os.getenv("OLLAMA_HOST", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
-
-# Tipo de proveedor predeterminado: "ollama" o "mock"
-# Si NEXO_PROVIDER_TYPE no se especifica, intenta usar Ollama con fallback a Mock
-DEFAULT_PROVIDER_TYPE: str = os.getenv("NEXO_PROVIDER_TYPE", "ollama").lower()
+OLLAMA_BASE_URL: str = validate_env_var("OLLAMA_HOST", "http://localhost:11434")
+DEFAULT_PROVIDER_TYPE: str = validate_env_var("NEXO_PROVIDER_TYPE", "ollama").lower()
 
 # Timeouts y reintentos para llamadas LLM
-OLLAMA_TIMEOUT: int = int(os.getenv("NEXO_OLLAMA_TIMEOUT", "180"))
-OLLAMA_MAX_RETRIES: int = int(os.getenv("NEXO_OLLAMA_RETRIES", "3"))
+OLLAMA_TIMEOUT: int = validate_env_var("NEXO_OLLAMA_TIMEOUT", 180)
+OLLAMA_MAX_RETRIES: int = validate_env_var("NEXO_OLLAMA_RETRIES", 3)
 
 # ─────────────────────────────────────────────
 #  Modelos Ollama por agente
@@ -30,11 +45,11 @@ OLLAMA_MAX_RETRIES: int = int(os.getenv("NEXO_OLLAMA_RETRIES", "3"))
 #    - Razonamiento/Análisis/Estrategia/Evaluación/Orquestación: gemma4:12b-mlx
 #    - Tareas técnicas y código: qwen2.5-coder:7b
 # ─────────────────────────────────────────────
-MODEL_ANALYST: str      = os.getenv("NEXO_MODEL_ANALYST", "gemma4:12b-mlx")
-MODEL_STRATEGIST: str   = os.getenv("NEXO_MODEL_STRATEGIST", "gemma4:12b-mlx")
-MODEL_EXECUTOR: str     = os.getenv("NEXO_MODEL_EXECUTOR", "qwen2.5-coder:7b")
-MODEL_EVALUATOR: str    = os.getenv("NEXO_MODEL_EVALUATOR", "gemma4:12b-mlx")
-MODEL_ORCHESTRATOR: str = os.getenv("NEXO_MODEL_ORCHESTRATOR", "gemma4:12b-mlx")
+MODEL_ANALYST: str      = validate_env_var("NEXO_MODEL_ANALYST", "gemma4:12b-mlx")
+MODEL_STRATEGIST: str   = validate_env_var("NEXO_MODEL_STRATEGIST", "gemma4:12b-mlx")
+MODEL_EXECUTOR: str     = validate_env_var("NEXO_MODEL_EXECUTOR", "qwen2.5-coder:7b")
+MODEL_EVALUATOR: str    = validate_env_var("NEXO_MODEL_EVALUATOR", "gemma4:12b-mlx")
+MODEL_ORCHESTRATOR: str = validate_env_var("NEXO_MODEL_ORCHESTRATOR", "gemma4:12b-mlx")
 
 PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
     "ANALYST": {
@@ -81,27 +96,27 @@ PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
 #  Parámetros del orquestador
 # ─────────────────────────────────────────────
 ORCHESTRATOR_CONFIG = {
-    "max_iterations":         int(os.getenv("NEXO_MAX_ITERATIONS", "5")),
-    "max_replanning_cycles":  int(os.getenv("NEXO_MAX_REPLANNING", "2")),
-    "coherence_threshold":    float(os.getenv("NEXO_COHERENCE_THRESHOLD", "0.6")),
-    "timeout_seconds":        int(os.getenv("NEXO_SESSION_TIMEOUT", "300")),
+    "max_iterations":         validate_env_var("NEXO_MAX_ITERATIONS", 5),
+    "max_replanning_cycles":  validate_env_var("NEXO_MAX_REPLANNING", 2),
+    "coherence_threshold":    validate_env_var("NEXO_COHERENCE_THRESHOLD", 0.6),
+    "timeout_seconds":        validate_env_var("NEXO_SESSION_TIMEOUT", 300),
 }
 
 # ─────────────────────────────────────────────
 #  Base de datos
 # ─────────────────────────────────────────────
-DB_PATH = Path(os.getenv("NEXO_DB_PATH", str(Path(__file__).parent.parent / "nexo_data.db")))
+DB_PATH = Path(validate_env_var("NEXO_DB_PATH", str(Path(__file__).parent.parent / "nexo_data.db")))
 
 # ─────────────────────────────────────────────
 #  API
 # ─────────────────────────────────────────────
-API_HOST = os.getenv("NEXO_API_HOST", "0.0.0.0")
-API_PORT = int(os.getenv("NEXO_API_PORT", "8000"))
+API_HOST = validate_env_var("NEXO_API_HOST", "0.0.0.0")
+API_PORT = int(validate_env_var("NEXO_API_PORT", 8000))
 
 # ─────────────────────────────────────────────
 #  Logging
 # ─────────────────────────────────────────────
-LOG_LEVEL = os.getenv("NEXO_LOG_LEVEL", "INFO")
+LOG_LEVEL = validate_env_var("NEXO_LOG_LEVEL", "INFO")
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
 
