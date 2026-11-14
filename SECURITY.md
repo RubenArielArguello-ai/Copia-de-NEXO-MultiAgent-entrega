@@ -25,6 +25,18 @@
 3. Implement proper firewall rules
 4. Use HTTPS for internal communication if possible
 
+NEXO binds to `127.0.0.1` by default. Compose publishes the dashboard/API only on
+host loopback and does not publish Ollama's port. Set a high-entropy
+`NEXO_API_TOKEN` for bearer authentication; production mode refuses API access
+without it. CORS origins are controlled by `NEXO_CORS_ORIGINS`.
+
+## Tool boundaries
+
+Read-only diagnostics are the default. File tools resolve paths and reject
+paths outside the project workspace. The legacy Python helper evaluates only
+bounded arithmetic expressions; it does not spawn a shell or execute Python
+programs. Skills must be registered and authorized for the requesting agent.
+
 ## Credentials Management
 
 ### Recommendations:

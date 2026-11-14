@@ -3,9 +3,10 @@ services:
     build: .
     image: nexo/orquestador:latest
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - NEXO_ENV=production
+      - NEXO_API_TOKEN=${NEXO_API_TOKEN:-}
       - OLLAMA_HOST=http://ollama-provider:11434
       - NEXO_DB_PATH=/data/nexo_data.db
       - NEXO_MEMORY_PATH=/data/nexo_data_db
@@ -19,8 +20,6 @@ services:
 
   ollama-provider:
     image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
     networks:
       - nexo-network
     volumes:

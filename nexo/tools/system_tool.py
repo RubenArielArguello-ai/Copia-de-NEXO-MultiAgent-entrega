@@ -80,6 +80,8 @@ class SystemDiagnosticTool(BaseTool):
                 "cpu_count": os.cpu_count() or 1,
             },
             "disk": disk_info,
+            "memory": self._memory_info(),
+            "processes": self._process_count(),
             "load_average_1_5_15m": load_avg,
             "python_version": platform.python_version(),
         }
@@ -96,3 +98,26 @@ class SystemDiagnosticTool(BaseTool):
             "overall_status": overall_status,
             "success": True,
         }
+
+    @staticmethod
+    def _memory_info() -> dict[str, Any]:
+        """Read physical RAM counters where the OS exposes them without commands."""
+        if not hasattr(os, "sysconf"):
+            return {"available": False}
+        try:
+            page = os.sysconf("SC_PAGE_SIZE")
+            total = page * os.sysconf("SC_PHYS_PAGES")
+            available_pages = os.sysconf("SC_AVPHYS_PAGES")
+            available = page * available_pages
+            return {"total_gb": round(total / 1024**3, 2),
+                    "available_gb": round(available / 1024**3, 2),
+                    "used_percent": round((total - available) * 100 / total, 1)}
+        except (ValueError, OSError, AttributeError):
+            return {"available": False}
+
+    @staticmethod
+    def _process_count() -> int | None:
+        try:
+            return sum(name.isdigit() for name in os.listdir("/proc"))
+        except OSError:
+            return None

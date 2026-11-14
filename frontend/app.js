@@ -11,6 +11,21 @@
 const API_BASE = window.location.origin;
 const POLL_INTERVAL_MS = 2000;
 
+async function apiFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const token = sessionStorage.getItem('nexo_api_token');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  let response = await fetch(url, { ...options, headers });
+  if (response.status === 401 && !token) {
+    const supplied = window.prompt('Esta instancia requiere API token. Se conservará solo en esta pestaña.');
+    if (!supplied) return response;
+    sessionStorage.setItem('nexo_api_token', supplied.trim());
+    headers.set('Authorization', `Bearer ${supplied.trim()}`);
+    response = await fetch(url, { ...options, headers });
+  }
+  return response;
+}
+
 // ── Estado local ────────────────────────────────────────────────────
 let currentSessionId   = null;
 let pollTimer          = null;
@@ -35,7 +50,7 @@ async function startSession() {
   document.getElementById('run-btn').disabled = true;
 
   try {
-    const res  = await fetch(`${API_BASE}/sessions`, {
+    const res  = await apiFetch(`${API_BASE}/sessions`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ request }),
@@ -78,11 +93,11 @@ async function poll() {
   try {
     // Obtener estado de la sesión
     const [sessionRes, messagesRes, coherenceRes, toolsRes, agentsRes] = await Promise.all([
-      fetch(`${API_BASE}/sessions/${currentSessionId}`),
-      fetch(`${API_BASE}/sessions/${currentSessionId}/messages`),
-      fetch(`${API_BASE}/sessions/${currentSessionId}/coherence`),
-      fetch(`${API_BASE}/sessions/${currentSessionId}/tools`),
-      fetch(`${API_BASE}/agents/status?session_id=${encodeURIComponent(currentSessionId)}`)
+      apiFetch(`${API_BASE}/sessions/${currentSessionId}`),
+      apiFetch(`${API_BASE}/sessions/${currentSessionId}/messages`),
+      apiFetch(`${API_BASE}/sessions/${currentSessionId}/coherence`),
+      apiFetch(`${API_BASE}/sessions/${currentSessionId}/tools`),
+      apiFetch(`${API_BASE}/agents/status?session_id=${encodeURIComponent(currentSessionId)}`)
     ]);
 
     if (!sessionRes.ok || !messagesRes.ok) return;
@@ -384,7 +399,7 @@ function renderToolExecutions(executions) {
 
 async function loadModels() {
   try {
-    const response = await fetch(`${API_BASE}/models`);
+    const response = await apiFetch(`${API_BASE}/models`);
     if (!response.ok) return;
     const data = await response.json();
     const available = data.ollama_connected === true;
@@ -411,7 +426,7 @@ async function loadTools() {
   const container = document.getElementById('tools-list');
   if (!container) return;
   try {
-    const response = await fetch(`${API_BASE}/tools`);
+    const response = await apiFetch(`${API_BASE}/tools`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     container.replaceChildren();
@@ -432,7 +447,7 @@ async function loadTools() {
 
 async function loadDashboardMetrics() {
   try {
-    const response = await fetch(`${API_BASE}/dashboard/metrics`);
+    const response = await apiFetch(`${API_BASE}/dashboard/metrics`);
     if (!response.ok) return;
     const data = await response.json();
     document.getElementById('metric-missions').textContent = data.missions_total;
@@ -455,7 +470,7 @@ async function loadHistory() {
   const container = document.getElementById('session-history');
   if (!container) return;
   try {
-    const response = await fetch(`${API_BASE}/sessions`);
+    const response = await apiFetch(`${API_BASE}/sessions`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     container.replaceChildren();
@@ -490,7 +505,7 @@ async function loadLogs() {
   const container = document.getElementById('system-logs');
   if (!container) return;
   try {
-    const response = await fetch(`${API_BASE}/dashboard/logs?limit=40`);
+    const response = await apiFetch(`${API_BASE}/dashboard/logs?limit=40`);
     if (!response.ok) return;
     const data = await response.json();
     container.replaceChildren();

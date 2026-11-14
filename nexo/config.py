@@ -106,7 +106,7 @@ DB_PATH = Path(validate_env_var("NEXO_DB_PATH", str(Path(__file__).parent.parent
 # ─────────────────────────────────────────────
 #  API
 # ─────────────────────────────────────────────
-API_HOST = validate_env_var("NEXO_API_HOST", "0.0.0.0")
+API_HOST = validate_env_var("NEXO_API_HOST", "127.0.0.1")
 API_PORT = int(validate_env_var("NEXO_API_PORT", 8000))
 
 # ─────────────────────────────────────────────

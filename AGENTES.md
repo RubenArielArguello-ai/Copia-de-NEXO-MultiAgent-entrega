@@ -10,9 +10,11 @@ Los agentes son implementaciones LLM con instrucciones de rol y contratos de ent
 | Ejecutor | `nexo/agents/executor.py` | Pide acciones técnicas a `ToolRegistry`, ejecuta herramientas permitidas y devuelve su resultado observado. |
 | Evaluador | `nexo/agents/evaluator.py` | Compara objetivo, plan y resultados; exige ejecución exitosa y evidencia antes de aprobar. Puede solicitar corrección. |
 
-## Herramientas y monitor
+## Skills, herramientas y monitor
 
 `nexo/tools/base_tool.py` contiene el registro, las políticas y el contrato común. Entre las herramientas registradas están los diagnósticos de sistema, red y puertos, además de operaciones de archivo expuestas por las herramientas básicas según la configuración y reglas de selección. No se debe describir esto como shell irrestricto. `CoherenceMonitor` (`nexo/tools/coherence_monitor.py`) sí está implementado: el Orquestador le consulta consistencia del objetivo, duplicaciones, contradicciones, dependencias y riesgo de ciclo. No es un agente ni un LLM adicional.
+
+`nexo/skills/registry.py` mantiene metadatos versionados de las capacidades, las selecciona por tarea y autoriza su uso por agente/permisos antes de que el Ejecutor llame al ToolRegistry. El registro incluye diagnósticos de sistema/red, disponibilidad TCP y lectura/escritura de archivos limitada al workspace. Las capacidades de logs, API HTTP, ingeniería de código y generación formal de informes todavía no están implementadas como Skills ejecutables.
 
 `nexo/agents/base_agent.py` comparte el ciclo de inferencia, parsing, publicación y respuesta de mensajes. Los mensajes estructurados están definidos en `nexo/schemas/message.py` y se transportan/persisten con `nexo/core/message_bus.py`.
 

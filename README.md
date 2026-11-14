@@ -12,7 +12,7 @@ NEXO es un prototipo académico para atender misiones técnicas mediante agentes
 | Ejecutor | `nexo/agents/executor.py` | Selecciona y llama herramientas registradas; devuelve resultados observados. |
 | Evaluador | `nexo/agents/evaluator.py` | Contrasta objetivo y resultados; aprueba solo con ejecución exitosa y evidencia suficiente. |
 
-Los roles y sus *skills* describen el trabajo de cada agente; no son herramientas ejecutables. Las herramientas son capacidades concretas registradas en `nexo/tools/` (diagnóstico de sistema, red, puertos y operaciones de archivo según las reglas del registro). `ToolRegistry` valida y ejecuta esas capacidades. La evaluación es una fase/agente, no una herramienta. `CoherenceMonitor` sí está implementado y lo consulta el Orquestador para detectar desvíos, duplicaciones, contradicciones, dependencias y riesgo de ciclos; no es otro agente.
+Los agentes, Skills y Tools son capas separadas. `nexo/skills/registry.py` registra capacidades versionadas, permite descubrirlas y seleccionar solo la pertinente para el Ejecutor; las Skills remiten a las herramientas existentes para evitar duplicación. Actualmente hay diagnósticos de sistema/red, comprobación TCP y lectura/escritura limitada al workspace. `ToolRegistry` conserva las ejecuciones. `CoherenceMonitor` lo consulta el Orquestador para detectar desvíos y ciclos.
 
 FastAPI (`api/main.py`) publica la API y sirve el Dashboard (`frontend/`). `app.py` ofrece una interfaz Streamlit cliente de la API. `MessageBus` persiste sesiones y mensajes en SQLite; `nexo/core/memory.py` usa Chroma para recuerdos aprobados. La memoria recuperada da contexto y no sustituye evidencia de la misión en curso.
 
@@ -37,7 +37,7 @@ python3 -m pip install -r requirements.txt
 ollama serve
 ```
 
-En otra terminal, iniciar la API con `uvicorn api.main:app --reload --host 127.0.0.1 --port 8000` y abrir `http://127.0.0.1:8000`. Si Ollama ya está funcionando como servicio, no iniciar otra instancia. Streamlit puede iniciarse con `streamlit run app.py`.
+En otra terminal, iniciar la API con `uvicorn api.main:app --reload --host 127.0.0.1 --port 8000` y abrir `http://127.0.0.1:8000`. La API escucha en localhost por defecto, limita el tamaño de misión y aplica rate limiting. Si se configura `NEXO_API_TOKEN`, los endpoints requieren `Authorization: Bearer <token>`. En producción (`NEXO_ENV=production`) el token es obligatorio. Para Compose, exportar `NEXO_API_TOKEN` antes de iniciar. El puerto de Ollama no se publica al host. Si Ollama ya funciona como servicio, no iniciar otra instancia. Streamlit puede iniciarse con `streamlit run app.py`.
 
 ## Material de entrega
 
@@ -47,4 +47,4 @@ En otra terminal, iniciar la API con `uvicorn api.main:app --reload --host 127.0
 
 ## Alcance y limitaciones
 
-La salida depende de la calidad y disponibilidad del modelo local. El plan y la selección de herramientas están acotados por reglas reconocidas; las operaciones disponibles no equivalen a acceso general al sistema. La evaluación LLM puede equivocarse pese a las comprobaciones de evidencia. La ruta LangChain de ejecución Python, si se usa desde su interfaz auxiliar, hereda permisos del proceso y no está aislada. Docker Compose está documentado, pero la imagen no forma parte de la validación de esta entrega. Chroma usa actualmente un adaptador de LangChain que avisa de una futura deprecación.
+La salida depende de la calidad y disponibilidad del modelo local. El registro actual no implementa aún análisis de logs, comprobaciones HTTP/SSRF, ingeniería de código ni generación estructurada de informes como Skills ejecutables. La ruta auxiliar de Python fue restringida a expresiones aritméticas y las funciones de archivo usan la misma contención del workspace. La evaluación LLM puede equivocarse pese a las comprobaciones de evidencia. Chroma usa actualmente un adaptador de LangChain que avisa de una futura deprecación.

@@ -16,6 +16,7 @@ from nexo.tools.system_tool import SystemDiagnosticTool
 from nexo.tools.port_tool import PortCheckTool
 from nexo.tools.base_tool import ToolRegistry
 from nexo.tools.basic_tools import FileReadTool, FileWriteTool, extract_requested_file_content
+from nexo.skills import SkillRegistry
 
 
 class ExecutorAgent(BaseAgent):
@@ -31,6 +32,7 @@ class ExecutorAgent(BaseAgent):
         self.tools.register(PortCheckTool())
         self.tools.register(FileReadTool())
         self.tools.register(FileWriteTool())
+        self.skills = SkillRegistry()
 
     @property
     def system_prompt(self) -> str:
@@ -75,7 +77,10 @@ recommendation, confidence y can_complete."""
         )
 
     def _try_tool(self, task: str, context: dict) -> dict:
-        tool_name = self.resolve_tool_for_task(task)
+        skill = self.skills.select(task)
+        tool_name = skill.tool_name if skill else None
+        if skill and not self.skills.authorize(skill.name, self.agent_id.value, skill.permission):
+            return {"tool": tool_name, "success": False, "error": "Operación bloqueada por Security Core", "output": {}}
         request = str(context.get("request", ""))
         if tool_name in {"file_write", "file_read"}:
             source = f"{request}\n{task}"

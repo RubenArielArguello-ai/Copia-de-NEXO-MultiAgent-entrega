@@ -12,14 +12,19 @@ Endpoints:
 from __future__ import annotations
 import logging
 import json
+import os
+import hmac
+import time
+from collections import defaultdict, deque
 from statistics import mean
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from pydantic import Field
 from pathlib import Path
 
 from nexo.core.orchestrator  import Orchestrator
@@ -52,10 +57,44 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[origin.strip() for origin in os.getenv("NEXO_CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000").split(",") if origin.strip()],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+_request_windows: dict[str, deque[float]] = defaultdict(deque)
+
+
+@app.middleware("http")
+async def protect_api(request: Request, call_next):
+    """Optional bearer auth, bounded request size and simple per-client throttling."""
+    if request.url.path == "/" or request.url.path.startswith("/static/") or request.method == "OPTIONS":
+        pass
+    else:
+        token = os.getenv("NEXO_API_TOKEN", "").strip()
+        if os.getenv("NEXO_ENV", "").lower() == "production" and not token:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "API token requerido en producción"}, status_code=503)
+        if token:
+            supplied = request.headers.get("authorization", "")
+            if not supplied.lower().startswith("bearer ") or not hmac.compare_digest(supplied[7:].strip(), token):
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"detail": "No autorizado"}, status_code=401)
+    length = request.headers.get("content-length")
+    if length and length.isdigit() and int(length) > 16_384:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Solicitud demasiado grande"}, status_code=413)
+    client = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    window = _request_windows[client]
+    while window and now - window[0] > 60:
+        window.popleft()
+    limit = 30 if request.method == "POST" else 300
+    if len(window) >= limit:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Límite de solicitudes excedido"}, status_code=429)
+    window.append(now)
+    return await call_next(request)
 
 # Servir frontend estático
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -66,7 +105,7 @@ if FRONTEND_DIR.exists():
 # ── Modelos Pydantic ──────────────────────────────────────────────────
 
 class SessionRequest(BaseModel):
-    request: str
+    request: str = Field(min_length=1, max_length=10_000)
 
 
 class SessionResponse(BaseModel):
@@ -345,6 +384,13 @@ async def list_available_tools():
     reg.register(FileReadTool())
     reg.register(FileWriteTool())
     return {"tools": reg.list_tools()}
+
+
+@app.get("/skills")
+async def list_available_skills():
+    """Capabilities discoverable by the Orchestrator's executor."""
+    from nexo.skills import SkillRegistry
+    return {"skills": SkillRegistry().list_skills()}
 
 
 @app.get("/models")

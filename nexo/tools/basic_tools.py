@@ -1,6 +1,6 @@
-import os
 import re
-import subprocess
+import ast
+import operator
 from pathlib import Path
 from nexo.tools.base_tool import BaseTool
 from langchain_core.tools import tool
@@ -88,7 +88,7 @@ def _project_path(value: str) -> Path:
 def leer_archivo(ruta: str) -> str:
     """Lee el contenido de un archivo de texto. Útil para revisar código o documentos existentes."""
     try:
-        with open(ruta, "r", encoding="utf-8") as f:
+        with _project_path(ruta).open("r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:
         return f"Error al leer el archivo: {str(e)}"
@@ -98,9 +98,9 @@ def leer_archivo(ruta: str) -> str:
 def escribir_archivo(ruta: str, contenido: str) -> str:
     """Escribe contenido en un archivo. Si el archivo no existe, lo crea. Útil para guardar resultados."""
     try:
-        # Crea la carpeta si no existe
-        os.makedirs(os.path.dirname(os.path.abspath(ruta)), exist_ok=True)
-        with open(ruta, "w", encoding="utf-8") as f:
+        path = _project_path(ruta)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
             f.write(contenido)
         return f"Éxito: Archivo escrito en {ruta}"
     except Exception as e:
@@ -109,15 +109,26 @@ def escribir_archivo(ruta: str, contenido: str) -> str:
 
 @tool
 def ejecutar_codigo_python(codigo: str) -> str:
-    """Ejecuta un bloque de código Python y devuelve la salida de la terminal o el error. Útil para hacer cálculos o probar scripts."""
+    """Evalúa expresiones aritméticas simples sin ejecutar código o procesos."""
     try:
-        # Ejecuta el código en un subproceso y captura la salida
-        resultado = subprocess.run(
-            ["python3", "-c", codigo], capture_output=True, text=True, timeout=10
-        )
-        if resultado.returncode == 0:
-            return f"Salida:\n{resultado.stdout}"
-        else:
-            return f"Error de ejecución:\n{resultado.stderr}"
+        if len(codigo) > 500:
+            raise ValueError("Expresión demasiado larga")
+        tree = ast.parse(codigo, mode="eval")
+        ops = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+               ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
+               ast.Mod: operator.mod, ast.Pow: operator.pow, ast.USub: operator.neg,
+               ast.UAdd: operator.pos}
+        def evaluate(node):
+            if isinstance(node, ast.Expression): return evaluate(node.body)
+            if isinstance(node, ast.Constant) and type(node.value) in (int, float): return node.value
+            if isinstance(node, ast.BinOp) and type(node.op) in ops:
+                left, right = evaluate(node.left), evaluate(node.right)
+                if isinstance(node.op, ast.Pow) and abs(right) > 100: raise ValueError("Exponente fuera de rango")
+                result = ops[type(node.op)](left, right)
+                if abs(result) > 10**100: raise ValueError("Resultado fuera de rango")
+                return result
+            if isinstance(node, ast.UnaryOp) and type(node.op) in ops: return ops[type(node.op)](evaluate(node.operand))
+            raise ValueError("Solo se permiten operaciones aritméticas")
+        return f"Resultado: {evaluate(tree)}"
     except Exception as e:
-        return f"Error al intentar ejecutar el código: {str(e)}"
+        return f"Operación rechazada: {type(e).__name__}"
