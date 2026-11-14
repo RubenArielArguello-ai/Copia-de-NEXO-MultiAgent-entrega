@@ -10,7 +10,7 @@ def test_skill_registry_selects_only_matching_executor_capability():
     registry = SkillRegistry()
     skill = registry.select("Revisar CPU y recursos del sistema")
     assert skill and skill.name == "system_diagnostics"
-    assert registry.select("Analizar registros de errores") is None
+    assert registry.select("Analizar registros de errores").name == "log_analysis"
     assert registry.authorize(skill.name, "EXECUTOR", "read")
     assert not registry.authorize(skill.name, "ANALYST", "read")
 

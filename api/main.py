@@ -376,6 +376,7 @@ async def list_available_tools():
     from nexo.tools.system_tool import SystemDiagnosticTool
     from nexo.tools.port_tool import PortCheckTool
     from nexo.tools.basic_tools import FileReadTool, FileWriteTool
+    from nexo.tools.analysis_tools import LogAnalysisTool, HTTPHealthCheckTool, CodeEngineeringTool, ReportGenerationTool
 
     reg = ToolRegistry()
     reg.register(NetworkDiagnosticTool())
@@ -383,6 +384,10 @@ async def list_available_tools():
     reg.register(PortCheckTool())
     reg.register(FileReadTool())
     reg.register(FileWriteTool())
+    reg.register(LogAnalysisTool())
+    reg.register(HTTPHealthCheckTool())
+    reg.register(CodeEngineeringTool())
+    reg.register(ReportGenerationTool())
     return {"tools": reg.list_tools()}
 
 

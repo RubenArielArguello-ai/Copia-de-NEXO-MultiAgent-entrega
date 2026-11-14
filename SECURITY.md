@@ -33,9 +33,11 @@ without it. CORS origins are controlled by `NEXO_CORS_ORIGINS`.
 ## Tool boundaries
 
 Read-only diagnostics are the default. File tools resolve paths and reject
-paths outside the project workspace. The legacy Python helper evaluates only
-bounded arithmetic expressions; it does not spawn a shell or execute Python
-programs. Skills must be registered and authorized for the requesting agent.
+paths outside the project workspace. Code analysis is static and never imports
+or executes inspected files. HTTP checks pin a resolved public IP, reject
+private/reserved addresses, omit query strings from output, cap timeouts, and
+do not follow redirects. Skills must be registered and authorized for the
+requesting agent.
 
 ## Credentials Management
 

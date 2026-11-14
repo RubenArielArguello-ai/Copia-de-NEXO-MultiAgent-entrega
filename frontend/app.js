@@ -440,6 +440,23 @@ async function loadTools() {
       line.append(name, description);
       container.append(line);
     });
+    const skillsResponse = await apiFetch(`${API_BASE}/skills`);
+    if (skillsResponse.ok) {
+      const skillsData = await skillsResponse.json();
+      const heading = document.createElement('h4');
+      heading.textContent = 'Skills registradas';
+      container.append(heading);
+      (skillsData.skills || []).forEach((skill) => {
+        const line = document.createElement('article');
+        line.className = 'plan-task';
+        const name = document.createElement('strong');
+        name.textContent = `${skill.name} · v${skill.version}`;
+        const description = document.createElement('span');
+        description.textContent = `${skill.description} · ${skill.permission} · ${skill.tool}`;
+        line.append(name, description);
+        container.append(line);
+      });
+    }
   } catch (error) {
     container.textContent = `No se pudo cargar el registro: ${error.message}`;
   }

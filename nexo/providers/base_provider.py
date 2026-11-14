@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
-import urllib.request
-import urllib.error
+import httpx
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
@@ -50,6 +50,9 @@ class OllamaProvider(BaseLLMProvider):
     Proveedor para modelos locales vía Ollama.
     Usa la API HTTP de Ollama con control de reintentos, timeouts y telemetría.
     """
+    _clients: dict[tuple[str, int], httpx.Client] = {}
+    _clients_lock = threading.Lock()
+    _models_cache: dict[str, tuple[float, list[str]]] = {}
 
     def __init__(
         self,
@@ -65,6 +68,15 @@ class OllamaProvider(BaseLLMProvider):
         self.max_retries    = max(1, max_retries)
         self.backoff_factor = backoff_factor
         self.last_telemetry: dict[str, Any] = {}
+        # One client per provider keeps HTTP connections alive across the agent's
+        # inference calls within a mission.
+        client_key = (self.base_url, int(timeout))
+        with self._clients_lock:
+            self._client = self._clients.get(client_key)
+            if self._client is None:
+                limits = httpx.Limits(max_connections=10, max_keepalive_connections=5)
+                self._client = httpx.Client(timeout=timeout, limits=limits)
+                self._clients[client_key] = self._client
 
     def generate(self, system_prompt: str, user_prompt: str, **kwargs) -> str:
         """
@@ -85,21 +97,14 @@ class OllamaProvider(BaseLLMProvider):
         if kwargs.get("format") == "json":
             payload["format"] = "json"
 
-        data = json.dumps(payload).encode("utf-8")
         last_error: Optional[Exception] = None
 
         for attempt in range(1, self.max_retries + 1):
             t0 = time.time()
             try:
-                req = urllib.request.Request(
-                    f"{self.base_url}/api/chat",
-                    data=data,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    raw_body = resp.read().decode("utf-8")
-                    body = json.loads(raw_body)
+                response = self._client.post(f"{self.base_url}/api/chat", json=payload)
+                response.raise_for_status()
+                body = response.json()
 
                 elapsed_ms = (time.time() - t0) * 1000
                 msg_obj = body.get("message", {})
@@ -125,7 +130,15 @@ class OllamaProvider(BaseLLMProvider):
                 )
                 return cleaned_content
 
-            except (urllib.error.URLError, TimeoutError, ConnectionResetError) as e:
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code < 500 and e.response.status_code != 429:
+                    raise ConnectionError(f"Ollama rechazó la solicitud (HTTP {e.response.status_code})") from e
+                last_error = e
+                logger.warning("Ollama [%s] attempt %d/%d returned HTTP %s", self.model, attempt, self.max_retries, e.response.status_code)
+                if attempt < self.max_retries:
+                    time.sleep(self.backoff_factor * (2 ** (attempt - 1)))
+
+            except (httpx.HTTPError, TimeoutError, ConnectionResetError) as e:
                 last_error = e
                 logger.warning(
                     "Ollama [%s] attempt %d/%d failed: %s",
@@ -135,7 +148,7 @@ class OllamaProvider(BaseLLMProvider):
                     sleep_time = self.backoff_factor * (2 ** (attempt - 1))
                     time.sleep(sleep_time)
 
-            except (KeyError, json.JSONDecodeError) as e:
+            except (KeyError, json.JSONDecodeError, ValueError) as e:
                 logger.error("Ollama response parse error (%s): %s", self.model, e)
                 raise ValueError(f"Respuesta inválida de Ollama: {e}") from e
 
@@ -154,15 +167,16 @@ class OllamaProvider(BaseLLMProvider):
 
     def get_installed_models(self) -> Optional[list[str]]:
         """Consulta Ollama una vez y devuelve `None` si el servidor no responde."""
+        cached = self._models_cache.get(self.base_url)
+        if cached and time.monotonic() - cached[0] < 5:
+            return list(cached[1])
         try:
-            req = urllib.request.Request(
-                f"{self.base_url}/api/tags",
-                headers={"Accept": "application/json"},
-                method="GET",
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            return [str(item.get("name", "")) for item in body.get("models", [])]
+            response = self._client.get(f"{self.base_url}/api/tags", timeout=5)
+            response.raise_for_status()
+            body = response.json()
+            models = [str(item.get("name", "")) for item in body.get("models", [])]
+            self._models_cache[self.base_url] = (time.monotonic(), models)
+            return list(models)
         except Exception:
             return None
 

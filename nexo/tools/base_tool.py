@@ -32,7 +32,8 @@ DISALLOWED_BINARIES = {
 }
 
 ALLOWED_SYSTEM_COMMANDS = {
-    "ifconfig", "ip", "netstat", "ping", "sw_vers", "uname", "uptime"
+    "ifconfig", "ip", "netstat", "ping", "sw_vers", "uname", "uptime",
+    "ps", "vm_stat", "sysctl"
 }
 
 

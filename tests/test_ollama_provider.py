@@ -12,7 +12,7 @@ Verifica:
 import sys
 import os
 import json
-import urllib.error
+import httpx
 from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -55,17 +55,17 @@ class TestOllamaProviderHelpers:
 class TestOllamaProviderLogic:
     """Verifica el comportamiento de OllamaProvider con mocks de red."""
 
-    @patch("urllib.request.urlopen")
-    def test_successful_generate_with_telemetry(self, mock_urlopen):
+    @patch("httpx.Client.post")
+    def test_successful_generate_with_telemetry(self, mock_post):
         """Una llamada exitosa debe devolver contenido y registrar telemetría."""
         mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
+        mock_response.json.return_value = {
             "message": {"content": "Respuesta correcta"},
             "prompt_eval_count": 15,
             "eval_count": 42,
             "total_duration": 150000000,
-        }).encode("utf-8")
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        }
+        mock_post.return_value = mock_response
 
         provider = OllamaProvider(model="gemma4:12b-mlx", max_retries=2)
         resp = provider.generate("System prompt", "User prompt")
@@ -75,47 +75,44 @@ class TestOllamaProviderLogic:
         assert provider.last_telemetry["prompt_eval_count"] == 15
         assert provider.last_telemetry["duration_ms"] >= 0
 
-    @patch("urllib.request.urlopen")
-    def test_retries_on_transient_network_error(self, mock_urlopen):
+    @patch("httpx.Client.post")
+    def test_retries_on_transient_network_error(self, mock_post):
         """Debe reintentar ante error transitorio y tener éxito en el segundo intento."""
         mock_ctx1 = MagicMock()
-        mock_ctx1.__enter__.side_effect = urllib.error.URLError("Connection reset")
-
-        mock_ctx2 = MagicMock()
+        failure = httpx.ConnectError("Connection reset", request=httpx.Request("POST", "http://ollama/api/chat"))
         mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps({
+        mock_resp.json.return_value = {
             "message": {"content": "Éxito tras reintento"},
             "eval_count": 10,
-        }).encode("utf-8")
-        mock_ctx2.__enter__.return_value = mock_resp
+        }
 
-        mock_urlopen.side_effect = [mock_ctx1, mock_ctx2]
+        mock_post.side_effect = [failure, mock_resp]
 
         provider = OllamaProvider(model="gemma4:12b-mlx", max_retries=2, backoff_factor=0.01)
         resp = provider.generate("System", "User")
         assert resp == "Éxito tras reintento"
         assert provider.last_telemetry["attempt"] == 2
 
-    @patch("urllib.request.urlopen")
-    def test_exhausted_retries_raises_connection_error(self, mock_urlopen):
+    @patch("httpx.Client.post")
+    def test_exhausted_retries_raises_connection_error(self, mock_post):
         """Si todos los reintentos fallan, debe lanzar ConnectionError."""
-        mock_urlopen.side_effect = urllib.error.URLError("Service unreachable")
+        mock_post.side_effect = httpx.ConnectError("Service unreachable", request=httpx.Request("POST", "http://ollama/api/chat"))
 
         provider = OllamaProvider(model="gemma4:12b-mlx", max_retries=2, backoff_factor=0.01)
         with pytest.raises(ConnectionError):
             provider.generate("System", "User")
 
-    @patch("urllib.request.urlopen")
-    def test_is_available_fuzzy_matching(self, mock_urlopen):
+    @patch("httpx.Client.get")
+    def test_is_available_fuzzy_matching(self, mock_get):
         """Verifica matching de nombres con y sin tags."""
         mock_response = MagicMock()
-        mock_response.read.return_value = json.dumps({
+        mock_response.json.return_value = {
             "models": [
                 {"name": "gemma4:12b-mlx"},
                 {"name": "qwen2.5-coder:7b"},
             ]
-        }).encode("utf-8")
-        mock_urlopen.return_value.__enter__.return_value = mock_response
+        }
+        mock_get.return_value = mock_response
 
         # Coincidencia exacta
         p1 = OllamaProvider(model="gemma4:12b-mlx")
@@ -143,3 +140,15 @@ class TestProviderFactory:
         cfg = {"EXECUTOR": {"type": "ollama", "model": "qwen2.5-coder:7b"}}
         with pytest.raises(ConnectionError, match="no está disponible"):
             build_provider("EXECUTOR", cfg)
+
+    def test_providers_share_keepalive_client_for_same_endpoint(self, monkeypatch):
+        key = ("http://reuse-test.invalid:11434", 120)
+        OllamaProvider._clients.pop(key, None)
+        client = MagicMock()
+        factory = MagicMock(return_value=client)
+        monkeypatch.setattr("nexo.providers.base_provider.httpx.Client", factory)
+        first = OllamaProvider("one", key[0], timeout=key[1])
+        second = OllamaProvider("two", key[0], timeout=key[1])
+        assert first._client is second._client is client
+        factory.assert_called_once()
+        OllamaProvider._clients.pop(key, None)

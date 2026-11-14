@@ -30,6 +30,7 @@ from nexo.agents.strategist import StrategistAgent
 from nexo.agents.executor   import ExecutorAgent
 from nexo.agents.evaluator  import EvaluatorAgent
 from nexo.tools.coherence_monitor import CoherenceMonitor
+from nexo.skills import SkillRegistry
 from nexo.schemas.message import (
     NexoMessage, AgentID, MessageStatus, TaskPhase, CoherenceFlag
 )
@@ -51,6 +52,7 @@ class Orchestrator:
         self.state_manager     = state_manager
         self.provider_config   = provider_config or PROVIDER_CONFIG
         self.coherence_monitor = CoherenceMonitor()
+        self.skill_registry = SkillRegistry()
         self.max_iterations    = ORCHESTRATOR_CONFIG["max_iterations"]
         self.max_replanning    = ORCHESTRATOR_CONFIG["max_replanning_cycles"]
         self.coherence_thr     = ORCHESTRATOR_CONFIG["coherence_threshold"]
@@ -346,6 +348,16 @@ class Orchestrator:
             # El orquestador ya tiene una fase de evaluación. Solo se delegan al
             # Ejecutor subtareas que correspondan a una herramienta real y única;
             # así no se ejecutan subtareas de resumen/revisión como si fueran acciones.
+            requested_skills = self.skill_registry.select_all(request_text)
+            proposed_names = {agents["executor"].resolve_tool_for_task(str(item.get("task", "")))
+                              for item in proposed_tasks if isinstance(item, dict)}
+            for skill in requested_skills:
+                if skill.tool_name not in proposed_names:
+                    proposed_tasks.append({"id": f"S{len(proposed_tasks)+1}",
+                                           "task": f"{skill.name}: {request_text}",
+                                           "agent": "EXECUTOR", "depends_on": []})
+                    proposed_names.add(skill.tool_name)
+
             for task in proposed_tasks:
                 task = dict(task)
                 task_id = task.get("id", "T?")
@@ -365,6 +377,7 @@ class Orchestrator:
                 eligible_ids.add(task_id)
                 tasks.append(task)
 
+            tasks.sort(key=lambda item: item.get("tool") == "report_generation")
             for task in tasks:
                 task["depends_on"] = [dep for dep in task.get("depends_on", []) if dep in eligible_ids]
 
@@ -403,11 +416,26 @@ class Orchestrator:
 
         results = []
         completed_tasks = set()
+        previous_by_tool = {
+            item.get("result", {}).get("tool_used"): item.get("result", {})
+            for item in session.agent_results.get("execution", [])
+            if isinstance(item, dict) and item.get("result", {}).get("can_complete")
+        }
 
         for task in plan:
             task_id  = task.get("id", "?")
             agent    = task.get("agent", "EXECUTOR")
             deps     = task.get("depends_on", [])
+            planned_tool = task.get("tool") or agents["executor"].resolve_tool_for_task(task.get("task", ""))
+
+            # Preserve completed evidence across replans; rerun only failed or
+            # explicitly regenerated report tasks.
+            prior = previous_by_tool.get(planned_tool)
+            if prior and planned_tool != "report_generation" and prior.get("tool_success"):
+                results.append({"task_id": task_id, "result": prior})
+                completed_tasks.add(task_id)
+                session.update_subtask(task_id, "done", prior)
+                continue
 
             # Verificar dependencias
             if not all(dep in completed_tasks for dep in deps):
@@ -552,7 +580,7 @@ class Orchestrator:
         return {
             "analyst":    AnalystAgent(build_provider("ANALYST", self.provider_config), bus),
             "strategist": StrategistAgent(build_provider("STRATEGIST", self.provider_config), bus),
-            "executor":   ExecutorAgent(build_provider("EXECUTOR", self.provider_config), bus),
+            "executor":   ExecutorAgent(build_provider("EXECUTOR", self.provider_config), bus, self.skill_registry),
             "evaluator":  EvaluatorAgent(build_provider("EVALUATOR", self.provider_config), bus),
         }
 

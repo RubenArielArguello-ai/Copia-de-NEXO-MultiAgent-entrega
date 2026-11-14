@@ -105,6 +105,8 @@ class TestSystemDiagnosticTool:
         assert "cpu_count" in output["system"]
         assert output["system"]["cpu_count"] >= 1
         assert "total_gb" in output["disk"]
+        assert "memory" in output
+        assert "processes" in output
 
 
 class TestPortCheckTool:

@@ -20,13 +20,13 @@ def validate_env_var(var_name: str, default_value: Any = None) -> Any:
     value = os.getenv(var_name)
     if value is not None:
         try:
-            # Attempt to convert the value to a specific type
             return type(default_value)(value)
         except ValueError:
-            print(f"Warning: Invalid value for {var_name}. Using default.")
+            import logging
+            logging.getLogger("nexo.config").warning("Invalid value for %s; using configured default", var_name)
             return default_value
     else:
-        print(f"Warning: Missing environment variable {var_name}. Using default.")
+        # An unset override is the normal default-config path, not a warning.
         return default_value
 
 # ─────────────────────────────────────────────

@@ -12,7 +12,7 @@ NEXO es un prototipo académico para atender misiones técnicas mediante agentes
 | Ejecutor | `nexo/agents/executor.py` | Selecciona y llama herramientas registradas; devuelve resultados observados. |
 | Evaluador | `nexo/agents/evaluator.py` | Contrasta objetivo y resultados; aprueba solo con ejecución exitosa y evidencia suficiente. |
 
-Los agentes, Skills y Tools son capas separadas. `nexo/skills/registry.py` registra capacidades versionadas, permite descubrirlas y seleccionar solo la pertinente para el Ejecutor; las Skills remiten a las herramientas existentes para evitar duplicación. Actualmente hay diagnósticos de sistema/red, comprobación TCP y lectura/escritura limitada al workspace. `ToolRegistry` conserva las ejecuciones. `CoherenceMonitor` lo consulta el Orquestador para detectar desvíos y ciclos.
+Los agentes, Skills y Tools son capas separadas. `nexo/skills/registry.py` registra capacidades versionadas, permite descubrirlas y seleccionar las pertinentes para una misión mixta; el Orchestrator incorpora esas capacidades al plan y el Executor autoriza cada una antes de utilizar el ToolRegistry. Incluye diagnósticos de sistema/red, comprobación TCP/HTTP pública, análisis de logs, análisis estático de Python, informes basados en evidencia y operaciones de archivo limitadas al workspace.
 
 FastAPI (`api/main.py`) publica la API y sirve el Dashboard (`frontend/`). `app.py` ofrece una interfaz Streamlit cliente de la API. `MessageBus` persiste sesiones y mensajes en SQLite; `nexo/core/memory.py` usa Chroma para recuerdos aprobados. La memoria recuperada da contexto y no sustituye evidencia de la misión en curso.
 
@@ -47,4 +47,4 @@ En otra terminal, iniciar la API con `uvicorn api.main:app --reload --host 127.0
 
 ## Alcance y limitaciones
 
-La salida depende de la calidad y disponibilidad del modelo local. El registro actual no implementa aún análisis de logs, comprobaciones HTTP/SSRF, ingeniería de código ni generación estructurada de informes como Skills ejecutables. La ruta auxiliar de Python fue restringida a expresiones aritméticas y las funciones de archivo usan la misma contención del workspace. La evaluación LLM puede equivocarse pese a las comprobaciones de evidencia. Chroma usa actualmente un adaptador de LangChain que avisa de una futura deprecación.
+La salida depende de la calidad y disponibilidad del modelo local. El chequeo HTTP solo permite destinos con IP pública, usa la IP resuelta para esa conexión y no sigue redirecciones. El análisis de código es estático: detecta sintaxis y patrones de riesgo, pero no modifica ni ejecuta programas. Los informes solo consolidan salidas observadas de herramientas. La ruta auxiliar de Python fue retirada; las funciones de archivo usan la contención del workspace. La evaluación LLM puede equivocarse pese a las comprobaciones de evidencia.
