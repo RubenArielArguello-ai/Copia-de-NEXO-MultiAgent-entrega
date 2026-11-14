@@ -1,0 +1,58 @@
+Warning: Input is not a terminal (fd=0).
+────────────────────────────────────────────────────────────────────────────────
+Aider v0.86.2
+Model: ollama_chat/qwen2.5-coder:3b with whole edit format
+Git repo: .git with 57 files
+Repo-map: disabled
+Added nexo/core/orchestador.py to the chat.
+
+To add a function that calculates the real percentage of progress based on data 
+stored in the database, we need to:                                             
+
+ 1 Define a function calculate_real_progress that takes the necessary           
+   parameters.                                                                  
+ 2 Connect to the database and retrieve the required data.                      
+ 3 Calculate the real percentage of progress.                                   
+ 4 Return or print the result.                                                  
+
+Here's how you can implement this in nexo/core/orchestador.py:                  
+
+nexo/core/orchestador.py                                                        
+
+                                                                                
+@@ -0,0 +1,24 @@                                                                
++import sqlite3                                                                 
++                                                                               
++def calculate_real_progress(database_path, task_id):                           
++    # Connect to the database                                                  
++    conn = sqlite3.connect(database_path)                                      
++    cursor = conn.cursor()                                                     
++                                                                               
++    try:                                                                       
++        # Query the database for progress data                                 
++        cursor.execute("SELECT completed_tasks, total_tasks FROM tasks WHERE id
+= ?", (task_id,))                                                               
++        result = cursor.fetchone()                                             
++                                                                               
++        if not result:                                                         
++            return 0                                                           
++                                                                               
++        completed_tasks, total_tasks = result                                  
++                                                                               
++        # Calculate the real percentage of progress                            
++        real_progress = (completed_tasks / total_tasks) * 100                  
++                                                                               
++        return real_progress                                                   
++                                                                               
++    finally:                                                                   
++        conn.close()                                                           
+                                                                                
+
+This function connects to a SQLite database, retrieves the number of completed  
+and total tasks for a given task ID, calculates the real percentage of progress,
+and returns it.                                                                 
+
+Tokens: 666 sent, 260 received.
+Applied edit to nexo/core/orchestador.py
+Commit 4896588 feat(nexo/core/orchestador.py): add function to calculate real 
+progress from database

@@ -32,7 +32,7 @@ def validate_env_var(var_name: str, default_value: Any = None) -> Any:
 # ─────────────────────────────────────────────
 #  Entorno y URLs
 # ─────────────────────────────────────────────
-OLLAMA_BASE_URL: str = validate_env_var("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_BASE_URL: str = validate_env_var("OLLAMA_HOST", "http://127.0.0.1:11434")
 DEFAULT_PROVIDER_TYPE: str = validate_env_var("NEXO_PROVIDER_TYPE", "ollama").lower()
 
 # Timeouts y reintentos para llamadas LLM
@@ -42,14 +42,13 @@ OLLAMA_MAX_RETRIES: int = validate_env_var("NEXO_OLLAMA_RETRIES", 3)
 # ─────────────────────────────────────────────
 #  Modelos Ollama por agente
 #  Preferencias del sistema:
-#    - Razonamiento/Análisis/Estrategia/Evaluación/Orquestación: gemma4:12b-mlx
-#    - Tareas técnicas y código: qwen2.5-coder:7b
+#    - Todos los agentes: qwen2.5-coder:7b (contratos JSON validados)
 # ─────────────────────────────────────────────
-MODEL_ANALYST: str      = validate_env_var("NEXO_MODEL_ANALYST", "gemma4:12b-mlx")
-MODEL_STRATEGIST: str   = validate_env_var("NEXO_MODEL_STRATEGIST", "gemma4:12b-mlx")
+MODEL_ANALYST: str      = validate_env_var("NEXO_MODEL_ANALYST", "qwen2.5-coder:7b")
+MODEL_STRATEGIST: str   = validate_env_var("NEXO_MODEL_STRATEGIST", "qwen2.5-coder:7b")
 MODEL_EXECUTOR: str     = validate_env_var("NEXO_MODEL_EXECUTOR", "qwen2.5-coder:7b")
-MODEL_EVALUATOR: str    = validate_env_var("NEXO_MODEL_EVALUATOR", "gemma4:12b-mlx")
-MODEL_ORCHESTRATOR: str = validate_env_var("NEXO_MODEL_ORCHESTRATOR", "gemma4:12b-mlx")
+MODEL_EVALUATOR: str    = validate_env_var("NEXO_MODEL_EVALUATOR", "qwen2.5-coder:7b")
+MODEL_ORCHESTRATOR: str = validate_env_var("NEXO_MODEL_ORCHESTRATOR", "qwen2.5-coder:7b")
 
 PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
     "ANALYST": {
@@ -87,9 +86,6 @@ PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
         "timeout": OLLAMA_TIMEOUT,
         "retries": OLLAMA_MAX_RETRIES,
     },
-    "default": {
-        "type": "mock",
-    },
 }
 
 # ─────────────────────────────────────────────
@@ -121,8 +117,11 @@ LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
 
 def get_provider_config(agent_role: str) -> dict[str, Any]:
-    """Obtiene la configuración específica para un rol de agente con fallback."""
-    cfg = PROVIDER_CONFIG.get(agent_role.upper())
+    """Obtiene la configuración específica para un rol de agente."""
+    key = agent_role.upper()
+    if key == "ORQUESTADOR":
+        key = "ORCHESTRATOR"
+    cfg = PROVIDER_CONFIG.get(key)
     if cfg:
         return dict(cfg)
-    return dict(PROVIDER_CONFIG.get("default", {"type": "mock"}))
+    raise KeyError(f"No hay configuración para el rol {agent_role}")

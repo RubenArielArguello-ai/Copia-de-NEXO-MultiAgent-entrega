@@ -1,12 +1,12 @@
 # NEXO — Arquitectura Técnica
 
-Este documento describe la arquitectura global del sistema NEXO, sus componentes fundamentales, patrones de diseño, modelo de datos y protocolos de comunicación inter-agente.
+Este documento describe la arquitectura global del sistema NEXO, sus componentes fundamentales, patrones de diseño, modelo de datos y protocolos de comunicación inter-agente. Para la guía operativa y educativa de cada archivo y las dos interfaces, consultar [Guía técnica y educativa](guia-tecnica.md).
 
 ---
 
 ## 1. Visión General de la Arquitectura
 
-NEXO está diseñado bajo una **arquitectura multiagente jerárquica con orquestador central y bus de mensajes in-process respaldado por SQLite**. No utiliza frameworks de orquestación de caja negra (como LangChain o AutoGen), garantizando control total del flujo cognitivo, determinismo y auditabilidad.
+NEXO está diseñado bajo una **arquitectura multiagente jerárquica con orquestador central y bus de mensajes in-process respaldado por SQLite**. El pipeline principal coordina explícitamente las fases y mensajes de NEXO. La interfaz Streamlit conserva también una ruta directa opcional del Ejecutor construida con LangChain para herramientas de archivos y Python.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -78,10 +78,10 @@ Cada agente hereda de `BaseAgent` (`nexo/agents/base_agent.py`), encapsulando su
 
 | Agente | Clase | Especialidad (Skill) | Modelo Principal | Fallback |
 |---|---|---|---|---|
-| **Analista** | `AnalystAgent` | Comprensión, extracción de hipótesis y criterios de éxito | `gemma4:12b-mlx` | `MockProvider` |
-| **Estratega** | `StrategistAgent` | Descomposición en grafo de subtareas atómicas y dependencias | `gemma4:12b-mlx` | `MockProvider` |
-| **Ejecutor** | `ExecutorAgent` | Diagnóstico técnico mediante herramientas y análisis de telemetría | `qwen2.5-coder:7b` | `MockProvider` |
-| **Evaluador** | `EvaluatorAgent` | QA crítico, verificación de evidencias contra criterios de éxito | `gemma4:12b-mlx` | `MockProvider` |
+| **Analista** | `AnalystAgent` | Comprensión, extracción de hipótesis y criterios de éxito | `gemma4:12b-mlx` | `OllamaProvider`; `MockProvider` solo explícito para tests |
+| **Estratega** | `StrategistAgent` | Descomposición en grafo de subtareas atómicas y dependencias | `gemma4:12b-mlx` | `OllamaProvider`; `MockProvider` solo explícito para tests |
+| **Ejecutor** | `ExecutorAgent` | Diagnóstico técnico mediante herramientas y análisis de telemetría | `qwen2.5-coder:7b` | Herramientas de sistema vía `ToolRegistry` |
+| **Evaluador** | `EvaluatorAgent` | QA crítico, verificación de evidencias contra criterios de éxito | `gemma4:12b-mlx` | `OllamaProvider`; `MockProvider` solo explícito para tests |
 
 ---
 

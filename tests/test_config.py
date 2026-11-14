@@ -41,14 +41,14 @@ def test_default_values():
     from nexo.core.config import ConfigManager
     
     config = ConfigManager()
-    assert config.max_iterations == 10, "El valor default de max_iterations debe ser 10"
+    assert config.max_iterations == 5, "El valor default de max_iterations debe coincidir con el Orquestador"
 
 def test_orquestador_model():
     """Test orquestador model configuration"""
     from nexo.core.config import PROVIDER_CONFIG
     
     assert "orquestador" in PROVIDER_CONFIG, "Configuración del Orquestador no encontrada"
-    assert PROVIDER_CONFIG["orquestador"]["model"] == "gemma4:12b-mlx", "Modelo del Orquestador no coincide con el esperado"
+    assert PROVIDER_CONFIG["orquestador"]["model"] == "qwen2.5-coder:7b", "Modelo del Orquestador no coincide con el esperado"
 
 def test_required_fields():
     """Test required fields in provider configurations"""
@@ -65,10 +65,10 @@ def test_provider_config_consistency():
     
     # Verificar que todos los modelos estén correctamente asignados
     model_assertions = {
-        "ANALYST": ("ollama", "gemma4:12b-mlx"),
+        "ANALYST": ("ollama", "qwen2.5-coder:7b"),
         "EXECUTOR": ("ollama", "qwen2.5-coder:7b"),
-        "STRATEGIST": ("ollama", "gemma4:12b-mlx"),
-        "EVALUATOR": ("ollama", "gemma4:12b-mlx")
+        "STRATEGIST": ("ollama", "qwen2.5-coder:7b"),
+        "EVALUATOR": ("ollama", "qwen2.5-coder:7b")
     }
     
     for agent, (provider_type, model) in model_assertions.items():

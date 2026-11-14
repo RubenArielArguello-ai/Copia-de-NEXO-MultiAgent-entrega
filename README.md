@@ -1,287 +1,50 @@
-# NEXO — Sistema Cognitivo Multiagente
+# NEXO — sistema cognitivo multiagente
 
-> Sistema multiagente para diagnóstico y resolución de problemas técnicos, construido como prototipo académico para una Diplomatura en Inteligencia Artificial.
+NEXO es un prototipo académico para atender misiones técnicas mediante agentes con responsabilidades separadas. El sistema interpreta una solicitud, propone un plan, ejecuta herramientas registradas y evalúa la evidencia obtenida. Las inferencias de los cuatro agentes usan modelos locales servidos por Ollama; la coordinación del flujo está implementada en Python.
 
-## Arquitectura
+## Arquitectura y responsabilidades
 
-### Orquestador
-- Coordinación global de la misión cognitiva
-- Control del flujo de comunicación entre agentes
-- Decisión de prioridades y recursos
-
-### Agentes Especializados
-1. **Analista**
-   - Interpretación del problema planteado
-   - Análisis técnico en profundidad
-   
-2. **Estratega** 
-   - Planificación detallada de las acciones
-   - Descomposición en subtareas manejables
-
-3. **Ejecutor** 
-   - Ejecución de herramientas técnicas
-   - Diagnóstico conmarcado
-
-4. **Evaluador**
-   - Validación de resultados
-   - Control de calidad
-
-## Protocolo de Mensajes
-
-El sistema utiliza un protocolo de mensajes estándar definido en `nexo/core/schemas/`, que incluye:
-- Mensajes de solicitud
-- Respuestas formateadas
-- Notificaciones de estado
-- Paquetes de comandos
-
-## Herramientas Integradas
-
-### NEXO Coherence Monitor (NCM)
-- Detecta desviaciones cognitivas en la colaboración interagente
-- Identifica patrones problemáticos:
-  - Divergencias del objetivo original
-  - Duplicación semántica
-  - Contradicciones entre agentes
-  - Incumplimientos de dependencias
-  - Riesgo de ciclos infinitos
-
-## Estructura del Proyecto
-
-```
-NEXO-MultiAgent/
-├── nexo/                    # Core functionality
-│   ├── core/               # Orquestador y gestión central
-│   ├── agents/             # Implementaciones específicas de cada agente
-│   ├── tools/              # Herramientas técnicas y NCM
-│   ├── providers/          # Proveedores de LLM (ollama y mock)
-│   └── schemas/            # Definiciones de mensajes
-├── api/                    # FastAPI REST API
-├── frontend/               # Dashboard HTML/CSS/JS
-├── tests/                  # Suite de pruebas
-├── docs/                   # Documentación técnica y usuario
-└── examples/               # Casos de prueba y demostraciones
-```
-
-## Configuración Avanzada
-
-### Definición de Proveedores
-Editar `nexo/core/config.py`:
-
-```python
-PROVIDER_CONFIG = {
-    "ANALYST":    {"type": "ollama", "model": "gemma4:12b-mlx"},
-    "EXECUTOR":   {"type": "ollama", "model": "qwen2.5-coder:7b"},
-    "STRATEGIST": {"type": "ollama", "model": "gemma4:12b-mlx"},
-    "EVALUATOR":  {"type": "ollama", "model": "gemma4:12b-mlx"},
-    "orquestador":{"type": "ollama", "model": "gemma4:12b-mlx"}
-}
-```
-
-### Opciones de Proveedor
-- **Ollama**: Para ejecución real con LLMs potentes
-- **Mock**: Para desarrollo y testing sin dependencias externas
-
-## Flujo Cognitivo Completo
-
-```
-Usuario → [Input] → Analista → [Análisis]
-        → Estratega → [Planificación]
-        → Orquestador → [Distribución]
-        → Ejecutor → [Acción + Monitoreo]
-        → NCM → [Validación de Coherencia]
-        → Evaluador → [Evaluación Final]
-        → [Resultado] ← Orquestador
-```
-
-## Documentación Técnica
-
-- [`docs/architecture.md`](docs/architecture.md) - Descripción detallada de la arquitectura
-- [`docs/cognitive-process.md`](docs/cognitive-process.md) - Explicación del flujo cognitivo
-- [`docs/ncm.md`](docs/ncm.md) - Documentación técnica del NEXO Coherence Monitor
-
-## Decisiones Técnicas Clave
-
-- Elección de Ollama como interfaz principal para LLMs
-- Implementación del protocolo de mensajes estándar
-- Diseño modular para fácil mantenimiento y extensibilidad
-
-## Setup y Configuración Inicial
-
-### Crear entorno virtual
-```bash
-python3 -m venv .venv
-source .venv/bin/activate  # En macOS/Linux o powershell start ./.env (Windows)
-```
-
-### Instalar dependencias
-```bash
-pip install -r requirements.txt
-```
-
-### Configurar proveedores de LLM
-Editar `nexo/core/config.py`:
-```python
-PROVIDER_CONFIG = {
-    "ANALYST":    {"type": "ollama", "model": "gemma4:12b-mlx"},
-    "EXECUTOR":   {"type": "ollama", "model": "qwen2.5-coder:7b"},
-    "STRATEGIST": {"type": "ollama", "model": "gemma4:12b-mlx"},
-    "EVALUATOR":  {"type": "ollama", "model": "gemma4:12b-mlx"},
-    "orquestador":{"type": "ollama", "model": "gemma4:12b-mlx"}
-}
-```
-
-### Inicializar servidor API
-```bash
-uvicorn api.main:app --reload --port 8000
-# Abrir http://localhost:8000/docs en el navegador para ver la documentación de API
-```
-
----
-
-## Qué es NEXO
-
-NEXO es un **proveedor inteligente de servicios técnicos** implementado como sistema multiagente cognitivo. No es un chatbot. Es un sistema donde cuatro agentes especializados colaboran bajo la dirección de un orquestador para resolver solicitudes de forma razonada, planificada y verificable.
-
-### Agentes
-
-| Agente | Skill | Modelo |
+| Componente | Implementación | Responsabilidad |
 |---|---|---|
-| **Orquestador** | Coordinación y control del objetivo global | gemma4:12b-mlx |
-| **Analista** | Interpretación y análisis del problema | gemma4:12b-mlx |
-| **Estratega** | Planificación y descomposición en subtareas | gemma4:12b-mlx |
-| **Ejecutor** | Ejecución de herramientas y diagnóstico técnico | qwen2.5-coder:7b |
-| **Evaluador** | Verificación, QA y control de calidad | gemma4:12b-mlx |
+| Orquestador | `nexo/core/orchestrator.py` | Coordina fases, mensajes, estado, replanificación limitada, coherencia y entrega. Es código Python, no un agente LLM en el flujo principal. |
+| Analista | `nexo/agents/analyst.py` | Interpreta la misión, explicita restricciones y criterios de éxito. |
+| Estratega | `nexo/agents/strategist.py` | Produce un plan breve con tareas y dependencias; el sistema valida que las acciones correspondan a capacidades disponibles. |
+| Ejecutor | `nexo/agents/executor.py` | Selecciona y llama herramientas registradas; devuelve resultados observados. |
+| Evaluador | `nexo/agents/evaluator.py` | Contrasta objetivo y resultados; aprueba solo con ejecución exitosa y evidencia suficiente. |
 
-### Herramienta Propia
+Los roles y sus *skills* describen el trabajo de cada agente; no son herramientas ejecutables. Las herramientas son capacidades concretas registradas en `nexo/tools/` (diagnóstico de sistema, red, puertos y operaciones de archivo según las reglas del registro). `ToolRegistry` valida y ejecuta esas capacidades. La evaluación es una fase/agente, no una herramienta. `CoherenceMonitor` sí está implementado y lo consulta el Orquestador para detectar desvíos, duplicaciones, contradicciones, dependencias y riesgo de ciclos; no es otro agente.
 
-**NEXO-Coherence Monitor (NCM)**: detecta anomalías cognitivas en la colaboración inter-agente:
-- Desviación del objetivo original
-- Duplicación semántica de tareas
-- Contradicciones entre agentes
-- Dependencias incumplidas
-- Riesgo de ciclo infinito
+FastAPI (`api/main.py`) publica la API y sirve el Dashboard (`frontend/`). `app.py` ofrece una interfaz Streamlit cliente de la API. `MessageBus` persiste sesiones y mensajes en SQLite; `nexo/core/memory.py` usa Chroma para recuerdos aprobados. La memoria recuperada da contexto y no sustituye evidencia de la misión en curso.
 
----
+## Ollama y modelos locales
 
-## Requisitos
+`nexo/config.py` define el proveedor y el endpoint. El valor predeterminado actual para Analista, Estratega, Ejecutor y Evaluador es `qwen2.5-coder:7b`, configurable por `NEXO_MODEL_ANALYST`, `NEXO_MODEL_STRATEGIST`, `NEXO_MODEL_EXECUTOR` y `NEXO_MODEL_EVALUATOR`. `OLLAMA_HOST` cambia el endpoint (por defecto `http://127.0.0.1:11434`). Ollama expone `/api/chat`; el proveedor maneja formato JSON cuando se solicita, timeout, reintentos y telemetría. `MockProvider` solo se usa si se selecciona explícitamente para pruebas. Si Ollama no está disponible, el modo real falla explícitamente.
 
-- Python 3.10+
-- Ollama corriendo localmente con `gemma4:12b-mlx` y `qwen2.5-coder:7b`
-- (Opcional) Los tests no requieren Ollama — usan MockProvider
+Chroma genera embeddings locales con `nomic-embed-text`; ese modelo es para memoria semántica, no uno de los cuatro agentes. La presencia de modelos debe verificarse en el equipo donde se hará la presentación.
 
-```bash
-# Verificar Ollama
-ollama list
-```
+## Evidencia de funcionamiento
 
----
+La misión `ee0d35a4` finalizó **COMPLETED** y **APPROVED**, según el registro de ejecución comunicado para esta entrega. El archivo [`prueba_nexo_final.txt`](prueba_nexo_final.txt) fue escrito, leído y verificado correctamente; su contenido registrado es `NEXO verificado por escritura y lectura`. Esta evidencia corresponde a una misión real aprobada, no a una ejecución con mocks. No se volvió a ejecutar durante la preparación documental.
 
-## Instalación
+## Inicio local
+
+Requisitos: Python 3.10+, dependencias de `requirements.txt`, Ollama y los modelos configurados.
 
 ```bash
-cd /Users/rubenarielarguello/Desktop/NEXO-MultiAgent
-
-# Crear entorno virtual
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Instalar dependencias
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
+ollama serve
 ```
 
----
+En otra terminal, iniciar la API con `uvicorn api.main:app --reload --host 127.0.0.1 --port 8000` y abrir `http://127.0.0.1:8000`. Si Ollama ya está funcionando como servicio, no iniciar otra instancia. Streamlit puede iniciarse con `streamlit run app.py`.
 
-## Ejecución
+## Material de entrega
 
-### Demo en consola (sin servidor)
+- [Arquitectura](ARQUITECTURA.md), [agentes y herramientas](AGENTES.md), [flujo](FLUJO_DE_EJECUCION.md) y [tecnologías](TECNOLOGIAS.md).
+- [Guía de presentación y defensa](GUIA_PRESENTACION.md), [informe final](INFORME_FINAL.md) y [diagrama](DIAGRAMA.md).
+- [Presentación editable](NEXO_FINAL.pptx) y su copia de compatibilidad `PRESENTACION_NEXO_FINAL.pptx`.
 
-```bash
-source .venv/bin/activate
-python examples/internet_connectivity.py
-```
+## Alcance y limitaciones
 
-### Servidor API + Dashboard
-
-```bash
-source .venv/bin/activate
-uvicorn api.main:app --reload --port 8000
-# Abrir http://localhost:8000 en el navegador
-```
-
-### Tests automatizados
-
-```bash
-# Con el test runner integrado (sin dependencias adicionales):
-python run_tests.py
-
-# O con pytest en el entorno virtual:
-source .venv/bin/activate
-python -m pytest tests/ -v
-```
-
----
-
-## Proceso Cognitivo
-
-```
-Usuario → [Percepción] → Analista → [Interpretación]
-        → Estratega → [Planificación]
-        → Orquestador → [Distribución]
-        → Ejecutor → [Acción + Herramientas]
-        → NCM → [Observación + Coherencia]
-        → Evaluador → [Evaluación]
-        → [¿OK?] → Entrega
-              ↘ [No] → Corrección → Orquestador (hasta max_iterations)
-```
-
----
-
-## Estructura del Proyecto
-
-```
-NEXO-MultiAgent/
-├── nexo/
-│   ├── core/           # Orquestador, bus de mensajes, estado
-│   ├── agents/         # Analista, Estratega, Ejecutor, Evaluador
-│   ├── tools/          # Diagnóstico de red + NCM (herramienta propia)
-│   ├── providers/      # Ollama + Mock (intercambiables)
-│   ├── schemas/        # Protocolo de mensajes
-│   └── config.py       # Configuración central de modelos
-├── api/                # FastAPI REST backend
-├── frontend/           # Dashboard HTML/CSS/JS
-├── tests/              # Tests automatizados
-├── docs/               # Documentación completa
-└── examples/           # Demo de ejecución
-```
-
----
-
-## Configurar modelos
-
-Editar `nexo/config.py`:
-
-```python
-PROVIDER_CONFIG = {
-    "ANALYST":    {"type": "ollama", "model": "gemma4:12b-mlx"},
-    "EXECUTOR":   {"type": "ollama", "model": "qwen2.5-coder:7b"},
-    # ...
-}
-```
-
-Para usar mock (sin Ollama): `{"type": "mock"}`
-
----
-
-## Documentación
-
-- [`docs/vision.md`](docs/vision.md) — Visión del proyecto
-- [`docs/architecture.md`](docs/architecture.md) — Arquitectura técnica
-- [`docs/cognitive-process.md`](docs/cognitive-process.md) — Proceso cognitivo
-- [`docs/innovation.md`](docs/innovation.md) — Herramienta propia (NCM)
-- [`docs/evaluation.md`](docs/evaluation.md) — Métricas y pruebas
-
----
-
-## Decisiones técnicas clave
-
-Ver [`decisions.md`](decisions.md) para el registro completo de decisiones de arquitectura.
+La salida depende de la calidad y disponibilidad del modelo local. El plan y la selección de herramientas están acotados por reglas reconocidas; las operaciones disponibles no equivalen a acceso general al sistema. La evaluación LLM puede equivocarse pese a las comprobaciones de evidencia. La ruta LangChain de ejecución Python, si se usa desde su interfaz auxiliar, hereda permisos del proceso y no está aislada. Docker Compose está documentado, pero la imagen no forma parte de la validación de esta entrega. Chroma usa actualmente un adaptador de LangChain que avisa de una futura deprecación.

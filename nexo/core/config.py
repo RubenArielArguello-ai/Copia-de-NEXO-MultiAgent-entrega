@@ -1,50 +1,47 @@
-from typing import Dict, Any
-from pydantic_settings import BaseSettings
+"""Compatibilidad de configuración para el núcleo histórico de NEXO."""
 
-from typing import Dict, Any, Optional
+from __future__ import annotations
+
 import os
+from typing import Any
+from nexo.config import ORCHESTRATOR_CONFIG
+
+
+PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
+    "ANALYST": {"type": "ollama", "model": os.getenv("NEXO_MODEL_ANALYST", "qwen2.5-coder:7b")},
+    "EXECUTOR": {"type": "ollama", "model": os.getenv("NEXO_MODEL_EXECUTOR", "qwen2.5-coder:7b")},
+    "STRATEGIST": {"type": "ollama", "model": os.getenv("NEXO_MODEL_STRATEGIST", "qwen2.5-coder:7b")},
+    "EVALUATOR": {"type": "ollama", "model": os.getenv("NEXO_MODEL_EVALUATOR", "qwen2.5-coder:7b")},
+    "ORCHESTRATOR": {"type": "ollama", "model": os.getenv("NEXO_MODEL_ORCHESTRATOR", "qwen2.5-coder:7b")},
+    # Alias conservado para consumidores antiguos.
+    "orquestador": {"type": "ollama", "model": os.getenv("NEXO_MODEL_ORCHESTRATOR", "qwen2.5-coder:7b")},
+}
+
 
 class ConfigManager:
-    """Configuration management for NEXO MultiAgent system"""
-    
+    """Configuración sencilla para compatibilidad con módulos anteriores."""
+
     def __init__(self):
         self.environment = os.getenv("NEXO_ENV", "development")
         self.config_file = os.path.join(os.path.dirname(__file__), "config.json")
-        
-    def get_provider_config(self, provider_name: str) -> Dict[str, Any]:
-        """Get configuration for a specific provider"""
-        return self.PROVIDER_CONFIG[provider_name]
-    
+        self.max_iterations = int(os.getenv("NEXO_MAX_ITERATIONS", str(ORCHESTRATOR_CONFIG["max_iterations"])))
+        self.provider_config = {key: dict(value) for key, value in PROVIDER_CONFIG.items()}
+
     @property
-    def PROVIDER_CONFIG(self) -> Dict[str, Any]:
-        """Provider configurations"""
-        if not hasattr(self, "_PROVIDER_CONFIG"):
-            self._PROVIDER_CONFIG = {
-                "ANALYST": {"type": "ollama", "model": "gemma4:12b-mlx"},
-                "EXECUTOR": {"type": "ollama", "model": "qwen2.5-coder:7b"},
-                "STRATEGIST": {"type": "ollama", "model": "gemma4:12b-mlx"},
-                "EVALUATOR": {"type": "ollama", "model": "gemma4:12b-mlx"},
-                "orquestador": {"type": "llm", "model": "gpt-3.5-turbo"}
-            }
-        return self._PROVIDER_CONFIG
-    
-    def get_environment_variable(self, name: str) -> Optional[str]:
-        """Get environment variable safely"""
-        return os.getenv(name)
-        self.environment = "development"
-        self.max_iterations = 10
-        self.provider_config = {
-            "ANALYST": {"type": "ollama", "model": "gemma4:12b-mlx"},
-            "EXECUTOR": {"type": "ollama", "model": "qwen2.5-coder:7b"},
-            "STRATEGIST": {"type": "ollama", "model": "gemma4:12b-mlx"},
-            "EVALUATOR": {"type": "ollama", "model": "gemma4:12b-mlx"},
-            "orquestador": {"type": "ollama", "model": "gemma4:12b-mlx"}
-        }
-    
-    @property
-    def PROVIDER_CONFIG(self) -> Dict[str, Any]:
+    def PROVIDER_CONFIG(self) -> dict[str, dict[str, Any]]:
         return self.provider_config
-    
+
     @property
     def MAX_ITERATIONS(self) -> int:
         return self.max_iterations
+
+    def get_provider_config(self, provider_name: str) -> dict[str, Any]:
+        key = provider_name.upper()
+        if key not in self.provider_config and provider_name.lower() == "orquestador":
+            key = "ORCHESTRATOR"
+        if key not in self.provider_config:
+            raise KeyError(f"Proveedor desconocido: {provider_name}")
+        return dict(self.provider_config[key])
+
+    def get_environment_variable(self, name: str) -> str | None:
+        return os.getenv(name)

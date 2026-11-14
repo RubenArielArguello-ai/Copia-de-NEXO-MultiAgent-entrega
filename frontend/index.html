@@ -7,7 +7,7 @@
   <meta name="description" content="Dashboard del sistema multiagente NEXO: orquestador cognitivo con agentes especializados, comunicación estructurada y control de coherencia." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
 
@@ -38,11 +38,27 @@
       <span class="brand-sub">Sistema Cognitivo Multiagente</span>
     </div>
   </div>
-  <div class="header-status" id="system-status">
-    <span class="status-dot idle"></span>
-    <span id="status-text">Listo</span>
+  <div class="header-indicators">
+    <span id="ollama-status" class="ollama-indicator offline">Ollama: comprobando</span>
+    <span id="coordinator-status" class="coordinator-indicator"><i class="status-dot idle"></i> Orquestador · esperando</span>
+    <div class="header-status" id="system-status">
+      <span class="status-dot idle"></span>
+      <span id="status-text">Listo</span>
+    </div>
   </div>
 </header>
+
+<section class="metrics-strip" aria-label="Métricas de NEXO">
+  <article class="metric-tile"><span>Misiones en historial reciente</span><strong id="metric-missions">—</strong></article>
+  <article class="metric-tile"><span>Sesiones activas</span><strong id="metric-active">—</strong></article>
+  <article class="metric-tile"><span>Aprobadas</span><strong id="metric-approved">—</strong></article>
+  <article class="metric-tile"><span>Tasa de aprobación</span><strong id="metric-approval-rate">—</strong></article>
+  <article class="metric-tile"><span>Rechazadas</span><strong id="metric-rejected">—</strong></article>
+  <article class="metric-tile"><span>Fallos técnicos</span><strong id="metric-failed">—</strong></article>
+  <article class="metric-tile"><span>Tareas completas</span><strong id="metric-tasks">—</strong></article>
+  <article class="metric-tile"><span>Promedio · completadas</span><strong id="metric-duration">—</strong></article>
+</section>
+<div id="metrics-provenance" class="metrics-note">Métricas verificadas desde el historial de SQLite.</div>
 
 <!-- ══════════════════════════════════════════════════════════════
      MAIN LAYOUT
@@ -55,6 +71,7 @@
     <!-- Panel de solicitud -->
     <section class="panel" id="request-panel">
       <h2 class="panel-title">Nueva Solicitud</h2>
+      <label class="field-label" for="request-input">Objetivo</label>
       <textarea
         id="request-input"
         class="request-textarea"
@@ -75,6 +92,7 @@
       <div class="coherence-display">
         <div class="coherence-ring" id="coherence-ring">
           <svg viewBox="0 0 80 80">
+            <defs><linearGradient id="ring-grad" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#06b6d4"/><stop offset="100%" stop-color="#34d399"/></linearGradient></defs>
             <circle class="ring-bg"    cx="40" cy="40" r="34" />
             <circle class="ring-fill"  cx="40" cy="40" r="34" id="ring-fill" />
           </svg>
@@ -94,27 +112,21 @@
     <section class="panel" id="agents-panel">
       <h2 class="panel-title">Agentes</h2>
       <div class="agents-grid">
-        <div class="agent-card" id="agent-ORCHESTRATOR" data-agent="ORCHESTRATOR">
-          <div class="agent-avatar orchestrator">O</div>
-          <div class="agent-info">
-            <div class="agent-name">Orquestador</div>
-            <div class="agent-model">gemma4:12b-mlx</div>
-          </div>
-          <div class="agent-status-dot idle" id="dot-ORCHESTRATOR"></div>
-        </div>
         <div class="agent-card" id="agent-ANALYST" data-agent="ANALYST">
           <div class="agent-avatar analyst">A</div>
           <div class="agent-info">
             <div class="agent-name">Analista</div>
-            <div class="agent-model">gemma4:12b-mlx</div>
+            <div class="agent-responsibility">Interpreta la solicitud y define criterios</div>
+            <div class="agent-model">Modelo: cargando…</div>
           </div>
           <div class="agent-status-dot idle" id="dot-ANALYST"></div>
         </div>
         <div class="agent-card" id="agent-STRATEGIST" data-agent="STRATEGIST">
-          <div class="agent-avatar strategist">E</div>
+          <div class="agent-avatar strategist">S</div>
           <div class="agent-info">
             <div class="agent-name">Estratega</div>
-            <div class="agent-model">gemma4:12b-mlx</div>
+            <div class="agent-responsibility">Descompone el objetivo en un plan</div>
+            <div class="agent-model">Modelo: cargando…</div>
           </div>
           <div class="agent-status-dot idle" id="dot-STRATEGIST"></div>
         </div>
@@ -122,7 +134,8 @@
           <div class="agent-avatar executor">X</div>
           <div class="agent-info">
             <div class="agent-name">Ejecutor</div>
-            <div class="agent-model">qwen2.5-coder:7b</div>
+            <div class="agent-responsibility">Usa herramientas y aporta evidencia</div>
+            <div class="agent-model">Modelo: cargando…</div>
           </div>
           <div class="agent-status-dot idle" id="dot-EXECUTOR"></div>
         </div>
@@ -130,11 +143,22 @@
           <div class="agent-avatar evaluator">V</div>
           <div class="agent-info">
             <div class="agent-name">Evaluador</div>
-            <div class="agent-model">gemma4:12b-mlx</div>
+            <div class="agent-responsibility">Contrasta resultados y emite veredicto</div>
+            <div class="agent-model">Modelo: cargando…</div>
           </div>
           <div class="agent-status-dot idle" id="dot-EVALUATOR"></div>
         </div>
       </div>
+    </section>
+
+    <section class="panel" id="history-panel">
+      <h2 class="panel-title">Historial de misiones</h2>
+      <div id="session-history" class="history-list"><div class="empty-state">Cargando historial…</div></div>
+    </section>
+
+    <section class="panel" id="memory-panel">
+      <h2 class="panel-title">Memoria recuperada</h2>
+      <div id="memory-context" class="memory-context">La memoria se mostrará para la misión seleccionada.</div>
     </section>
 
   </aside>
@@ -142,12 +166,35 @@
   <!-- ── Columna derecha: Plan + Mensajes + Resultado ── -->
   <div class="main-content">
 
+    <section class="panel" id="flow-panel">
+      <h2 class="panel-title">Flujo interagente</h2>
+      <div class="agent-flow" id="agent-flow">
+        <span data-flow="ANALYST">Analista</span><i>→</i>
+        <span data-flow="STRATEGIST">Estratega</span><i>→</i>
+        <span data-flow="EXECUTOR">Ejecutor</span><i>→</i>
+        <span data-flow="EVALUATOR">Evaluador</span>
+      </div>
+      <div id="flow-caption" class="muted-caption">Esperando una misión</div>
+      <div id="current-mission" class="current-mission">Seleccioná una misión para ver su objetivo y progreso.</div>
+    </section>
+
     <!-- Panel de Plan de Ejecución -->
     <section class="panel" id="plan-panel">
       <h2 class="panel-title">Plan de Ejecución</h2>
       <div id="plan-tasks" class="plan-tasks">
         <div class="empty-state">El plan aparecerá aquí una vez que el Estratega lo genere.</div>
       </div>
+    </section>
+
+    <section class="panel" id="tools-panel">
+      <h2 class="panel-title">Herramientas disponibles y ejecutadas</h2>
+      <div id="tools-list" class="plan-tasks"><div class="empty-state">Cargando herramientas…</div></div>
+      <div id="tools-used" class="messages-list"></div>
+    </section>
+
+    <section class="panel" id="logs-panel">
+      <h2 class="panel-title">Eventos y errores</h2>
+      <div id="system-logs" class="messages-list"><div class="empty-state">Sin eventos recientes.</div></div>
     </section>
 
     <!-- Panel de Mensajes Inter-Agente -->
@@ -166,6 +213,18 @@
       <h2 class="panel-title">Resultado Final</h2>
       <div id="result-content" class="result-content"></div>
       <div id="metrics-row" class="metrics-row"></div>
+    </section>
+
+    <section class="panel evaluation-panel" id="evaluation-panel" style="display:none">
+      <div class="panel-header-row">
+        <h2 class="panel-title">Evaluación del resultado</h2>
+        <span id="evaluation-confidence" class="verdict-chip">Pendiente</span>
+      </div>
+      <p id="evaluation-summary" class="evaluation-summary">El Evaluador analizará evidencia después de la ejecución.</p>
+      <div class="evaluation-columns">
+        <div><h3>Problemas observados</h3><ul id="evaluation-issues"><li class="empty-inline">Sin datos de evaluación.</li></ul></div>
+        <div><h3>Correcciones sugeridas</h3><ul id="evaluation-corrections"><li class="empty-inline">Sin correcciones registradas.</li></ul></div>
+      </div>
     </section>
 
   </div>

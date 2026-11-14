@@ -1,12 +1,19 @@
-version: '3.8'
-
 services:
   orquestador:
+    build: .
     image: nexo/orquestador:latest
     ports:
       - "8000:8000"
     environment:
       - NEXO_ENV=production
+      - OLLAMA_HOST=http://ollama-provider:11434
+      - NEXO_DB_PATH=/data/nexo_data.db
+      - NEXO_MEMORY_PATH=/data/nexo_data_db
+    volumes:
+      - nexo-data:/data
+    depends_on:
+      ollama-provider:
+        condition: service_healthy
     networks:
       - nexo-network
 
@@ -16,7 +23,18 @@ services:
       - "11434:11434"
     networks:
       - nexo-network
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
 networks:
   nexo-network:
     driver: bridge
+
+volumes:
+  nexo-data:
+  ollama-data:

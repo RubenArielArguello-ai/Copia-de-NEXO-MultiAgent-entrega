@@ -33,7 +33,7 @@ from nexo.tools.coherence_monitor import CoherenceMonitor
 from nexo.schemas.message import (
     NexoMessage, AgentID, MessageStatus, TaskPhase, CoherenceFlag
 )
-from nexo.providers.base_provider import build_provider
+from nexo.providers.base_provider import build_provider, MockProvider
 from nexo.config import PROVIDER_CONFIG, ORCHESTRATOR_CONFIG
 
 logger = logging.getLogger(__name__)
@@ -47,8 +47,9 @@ class Orchestrator:
     coordinando los 4 agentes especializados.
     """
 
-    def __init__(self, state_manager: StateManager):
+    def __init__(self, state_manager: StateManager, provider_config: Optional[dict] = None):
         self.state_manager     = state_manager
+        self.provider_config   = provider_config or PROVIDER_CONFIG
         self.coherence_monitor = CoherenceMonitor()
         self.max_iterations    = ORCHESTRATOR_CONFIG["max_iterations"]
         self.max_replanning    = ORCHESTRATOR_CONFIG["max_replanning_cycles"]
@@ -79,15 +80,28 @@ class Orchestrator:
         bus = MessageBus(session_id)
         bus.save_session(session.original_request, "RUNNING", session.to_summary())
 
-        # Construir agentes con sus proveedores
-        agents = self._build_agents(bus)
-
         session.status = SessionStatus.RUNNING
 
         try:
+            # Construir agentes con sus proveedores. Una configuración real de
+            # Ollama que no esté disponible falla aquí; no se sustituye por mock.
+            agents = self._build_agents(bus)
+            session.agent_results["mock_mode"] = all(
+                isinstance(agent.provider, MockProvider) for agent in agents.values()
+            )
+            session.agent_results["models_used"] = {
+                agent.agent_id.value: (
+                    getattr(agent.provider, "model", None)
+                    or getattr(agent.provider, "last_telemetry", {}).get("model")
+                    or f"mock-{agent.agent_id.value.lower()}"
+                )
+                for agent in agents.values()
+            }
+            session.agent_results["memory_context"] = self._load_memory_context(session, agents)
+
             # ── FASE 1: PERCEPCIÓN + ANÁLISIS ─────────────────────────
             analysis = self._phase_analysis(session, bus, agents)
-            if not analysis:
+            if not analysis or analysis.get("parse_error"):
                 return self._fail(session, bus, "El Analista no pudo interpretar la solicitud")
 
             # ── FASE 2: PLANIFICACIÓN ─────────────────────────────────
@@ -136,6 +150,7 @@ class Orchestrator:
                         or self._extract_best_answer(execution_results)
                     )
                     session.status       = SessionStatus.COMPLETED
+                    self._remember_approved_result(session, execution_results)
                     break
 
                 elif verdict in ("NEEDS_CORRECTION", "REJECTED") and replan_count < self.max_replanning:
@@ -169,6 +184,18 @@ class Orchestrator:
             self._log.error("Unexpected error: %s", e, exc_info=True)
             return self._fail(session, bus, str(e))
 
+        # El circuit breaker también debe cerrar la sesión cuando alcanza el
+        # máximo de iteraciones o detecta riesgo de ciclo antes de ejecutar.
+        if session.status in (SessionStatus.RUNNING, SessionStatus.REPLANNING):
+            available_results = session.agent_results.get("execution", [])
+            session.final_answer = self._extract_best_answer(available_results)
+            session.final_answer = (
+                "Resultado no aprobado por el Evaluador. Mejor resultado disponible: "
+                + session.final_answer
+            )
+            self.state_manager.set_phase(session.session_id, TaskPhase.DELIVERY)
+            session.status = SessionStatus.COMPLETED
+
         # ── Métricas finales ──────────────────────────────────────────
         elapsed = time.time() - start_time
         session.metrics.update({
@@ -187,8 +214,16 @@ class Orchestrator:
 
         result = {
             "session_id":     session_id,
+            "original_request": session.original_request,
             "status":         session.status.value,
+            "current_phase":  session.current_phase.value,
+            "iteration":      session.iteration,
             "final_answer":   session.final_answer,
+            "approved":       session.agent_results.get("evaluation", {}).get("verdict") == "APPROVED",
+            "verdict":        session.agent_results.get("evaluation", {}).get("verdict", "UNKNOWN"),
+            "agent_results":  session.agent_results,
+            "error_log":      list(session.error_log),
+            "memory_context": session.agent_results.get("memory_context", ""),
             "coherence_score": session.coherence_score,
             "metrics":        session.metrics,
             "messages":       [m.to_dict() for m in session.messages],
@@ -198,6 +233,16 @@ class Orchestrator:
                     "description": st.description,
                     "agent":       st.assigned_to,
                     "status":      st.status,
+                }
+                for st in session.plan
+            ],
+            "plan_detail": [
+                {
+                    "id": st.task_id,
+                    "description": st.description,
+                    "agent": st.assigned_to,
+                    "status": st.status,
+                    "depends_on": st.depends_on,
                 }
                 for st in session.plan
             ],
@@ -227,7 +272,10 @@ class Orchestrator:
             goal=session.original_request,
             phase=TaskPhase.ANALYSIS,
             payload={"request": session.original_request},
-            context={"session_id": session.session_id},
+            context={
+                "session_id": session.session_id,
+                "memory_context": session.agent_results.get("memory_context", ""),
+            },
             status=MessageStatus.PENDING,
             next_action="ANALYZE",
         )
@@ -279,7 +327,52 @@ class Orchestrator:
         if response:
             session.add_message(response)
             plan_data = response.payload.get("plan", {})
-            tasks     = plan_data.get("plan", [])
+            proposed_tasks = plan_data.get("plan", [])
+            tasks = []
+            excluded = []
+            selected_tools = set()
+            eligible_ids = set()
+
+            # Una solicitud compuesta de crear y luego leer un archivo se
+            # convierte en dos operaciones reales para respetar el orden y
+            # verificar el contenido que se escribió.
+            request_text = session.original_request
+            if any(term in request_text.lower() for term in ("archivo", "file")) and any(term in request_text.lower() for term in ("crea", "crear", "escrib", "guarda", "create", "write")) and any(term in request_text.lower() for term in ("lee", "leer", "léelo", "leelo", "read")):
+                proposed_tasks = [
+                    {"id": "T1", "task": f"Crear archivo solicitado. Objetivo completo: {request_text}", "agent": "EXECUTOR", "depends_on": []},
+                    {"id": "T2", "task": f"Leer el archivo creado y verificar su contenido. Objetivo completo: {request_text}", "agent": "EXECUTOR", "depends_on": ["T1"]},
+                ]
+
+            # El orquestador ya tiene una fase de evaluación. Solo se delegan al
+            # Ejecutor subtareas que correspondan a una herramienta real y única;
+            # así no se ejecutan subtareas de resumen/revisión como si fueran acciones.
+            for task in proposed_tasks:
+                task = dict(task)
+                task_id = task.get("id", "T?")
+                if str(task.get("agent", "EXECUTOR")).upper() != "EXECUTOR":
+                    excluded.append({"id": task_id, "task": task.get("task", ""), "reason": "la evaluación se realiza en la fase del Evaluador"})
+                    continue
+                tool_name = agents["executor"].resolve_tool_for_task(task.get("task", ""))
+                if tool_name is None:
+                    excluded.append({"id": task_id, "task": task.get("task", ""), "reason": "no corresponde a una herramienta ejecutable del pipeline"})
+                    continue
+                if tool_name in selected_tools:
+                    excluded.append({"id": task_id, "task": task.get("task", ""), "reason": f"acción duplicada: {tool_name}"})
+                    continue
+                task["agent"] = "EXECUTOR"
+                task["tool"] = tool_name
+                selected_tools.add(tool_name)
+                eligible_ids.add(task_id)
+                tasks.append(task)
+
+            for task in tasks:
+                task["depends_on"] = [dep for dep in task.get("depends_on", []) if dep in eligible_ids]
+
+            plan_data["proposed_plan"] = proposed_tasks
+            plan_data["plan"] = tasks
+            plan_data["excluded_tasks"] = excluded
+            if excluded:
+                self._log.info("Plan normalized: kept %d executable task(s), excluded %d non-executable/duplicate task(s)", len(tasks), len(excluded))
 
             # Registrar el plan en el estado de sesión
             session.plan.clear()
@@ -457,23 +550,69 @@ class Orchestrator:
     def _build_agents(self, bus: MessageBus) -> dict:
         """Construye los agentes con sus proveedores configurados."""
         return {
-            "analyst":    AnalystAgent(build_provider("ANALYST", PROVIDER_CONFIG), bus),
-            "strategist": StrategistAgent(build_provider("STRATEGIST", PROVIDER_CONFIG), bus),
-            "executor":   ExecutorAgent(build_provider("EXECUTOR", PROVIDER_CONFIG), bus),
-            "evaluator":  EvaluatorAgent(build_provider("EVALUATOR", PROVIDER_CONFIG), bus),
+            "analyst":    AnalystAgent(build_provider("ANALYST", self.provider_config), bus),
+            "strategist": StrategistAgent(build_provider("STRATEGIST", self.provider_config), bus),
+            "executor":   ExecutorAgent(build_provider("EXECUTOR", self.provider_config), bus),
+            "evaluator":  EvaluatorAgent(build_provider("EVALUATOR", self.provider_config), bus),
         }
+
+    def _load_memory_context(self, session: SessionState, agents: dict) -> str:
+        """Recupera recuerdos solo en ejecución real; el modo mock evita I/O externo."""
+        if all(isinstance(agent.provider, MockProvider) for agent in agents.values()):
+            return ""
+        try:
+            from nexo.core.memory import buscar_en_memoria
+            memory = buscar_en_memoria(session.original_request)
+            self._log.info("Memory context loaded (%d chars)", len(memory))
+            return memory
+        except Exception as exc:
+            self._log.warning("Memory retrieval failed; continuing without it: %s", exc)
+            return ""
+
+    def _remember_approved_result(self, session: SessionState, execution_results: list[dict]) -> None:
+        """Persiste solo resultados aprobados para no contaminar la memoria con errores."""
+        if session.agent_results.get("mock_mode"):
+            self._log.info("Skipping memory write for mock-provider session")
+            return
+        try:
+            from nexo.core.memory import guardar_en_memoria
+            evaluation = session.agent_results.get("evaluation", {})
+            guardar_en_memoria(
+                f"Objetivo aprobado: {session.original_request}\n"
+                f"Criterios: {evaluation.get('summary', '')}\n"
+                f"Resultado verificado: {session.final_answer}\n"
+                f"Ejecución: {execution_results}"
+            )
+        except Exception as exc:
+            self._log.warning("Memory persistence failed: %s", exc)
 
     def _fail(self, session: SessionState, bus: MessageBus, reason: str) -> dict:
         session.status = SessionStatus.FAILED
         session.error_log.append(reason)
-        bus.save_session(session.original_request, "FAILED", session.to_summary())
-        return {
-            "session_id":   session.session_id,
-            "status":       "FAILED",
+        session.metrics.update({
+            "end_time": time.time(),
+            "iterations": session.iteration,
+            "message_count": len(session.messages),
+        })
+        result = {
+            **session.to_summary(),
+            "status": "FAILED",
+            "approved": False,
+            "verdict": "FAILED",
             "final_answer": f"El sistema no pudo resolver la solicitud: {reason}",
-            "metrics":      session.metrics,
-            "messages":     [m.to_dict() for m in session.messages],
+            "error_log": list(session.error_log),
+            "metrics": dict(session.metrics),
+            "agent_results": dict(session.agent_results),
+            "memory_context": session.agent_results.get("memory_context", ""),
+            "messages": [m.to_dict() for m in session.messages],
+            "plan": [
+                {"id": task.task_id, "description": task.description,
+                 "agent": task.assigned_to, "status": task.status}
+                for task in session.plan
+            ],
         }
+        bus.save_session(session.original_request, "FAILED", result)
+        return result
 
     def _extract_best_answer(self, execution_results: list[dict]) -> str:
         """Extrae la mejor respuesta disponible de los resultados de ejecución."""

@@ -1,5 +1,7 @@
 # NEXO — Evaluación y Métricas de Rendimiento
 
+> Las cifras porcentuales de este documento describen hipótesis/resultados de la propuesta original. No se consideran una reproducción independiente de esta entrega: para presentarlas como mediciones hace falta el dataset, las ejecuciones y el método de cálculo. La verificación técnica actual se registra en [`INFORME_FINAL.md`](../INFORME_FINAL.md).
+
 Este documento detalla la metodología de evaluación, los experimentos comparativos y las métricas de rendimiento y calidad cognitiva obtenidas con el sistema multiagente NEXO y el monitor de coherencia NCM.
 
 ---

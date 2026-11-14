@@ -12,6 +12,7 @@ in-process, con persistencia asíncrona a SQLite para trazabilidad completa:
 from __future__ import annotations
 import json
 import logging
+import os
 import sqlite3
 from collections import deque
 from pathlib import Path
@@ -22,10 +23,11 @@ from nexo.schemas.message import NexoMessage, AgentID
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent.parent / "nexo_data.db"
+DB_PATH = Path(os.getenv("NEXO_DB_PATH", str(Path(__file__).parent.parent.parent / "nexo_data.db")))
 
 
 def _get_connection() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
@@ -245,6 +247,46 @@ class MessageBus:
             return [dict(row) for row in rows]
         except Exception as e:
             logger.error("Error reading session messages: %s", e)
+            return []
+
+    def get_session_record(self) -> Optional[dict[str, Any]]:
+        """Devuelve el registro y resumen persistido de la sesión, si existe."""
+        try:
+            with _get_connection() as conn:
+                row = conn.execute(
+                    "SELECT * FROM sessions WHERE session_id = ?", (self.session_id,)
+                ).fetchone()
+            if not row:
+                return None
+            record = dict(row)
+            try:
+                record["summary"] = json.loads(record.get("summary") or "{}")
+            except json.JSONDecodeError:
+                record["summary"] = {}
+            return record
+        except Exception as exc:
+            logger.error("Error reading session record: %s", exc)
+            return None
+
+    @staticmethod
+    def list_session_records(limit: int = 200) -> list[dict[str, Any]]:
+        """Recupera historial persistente ordenado por última actualización."""
+        try:
+            with _get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ?", (limit,)
+                ).fetchall()
+            records = []
+            for row in rows:
+                record = dict(row)
+                try:
+                    record["summary"] = json.loads(record.get("summary") or "{}")
+                except json.JSONDecodeError:
+                    record["summary"] = {}
+                records.append(record)
+            return records
+        except Exception as exc:
+            logger.error("Error reading session history: %s", exc)
             return []
 
     def get_session_tools(self) -> list[dict]:

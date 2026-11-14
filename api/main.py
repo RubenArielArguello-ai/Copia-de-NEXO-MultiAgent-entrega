@@ -11,7 +11,8 @@ Endpoints:
 
 from __future__ import annotations
 import logging
-import threading
+import json
+from statistics import mean
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -119,8 +120,92 @@ async def create_session(body: SessionRequest, background_tasks: BackgroundTasks
 
 @app.get("/sessions")
 async def list_sessions():
-    """Lista todas las sesiones con su estado."""
-    return {"sessions": state_manager.list_sessions()}
+    """Lista sesiones activas y el historial durable de SQLite."""
+    records = MessageBus.list_session_records(limit=200)
+    sessions = {item["session_id"]: item for item in state_manager.list_sessions()}
+    for record in records:
+        summary = record.get("summary") or {}
+        summary.setdefault("session_id", record["session_id"])
+        summary.setdefault("original_request", record["request"])
+        summary.setdefault("status", record["status"])
+        summary.setdefault("updated_at", record["updated_at"])
+        session_id = record["session_id"]
+        if session_id in sessions:
+            # Une el resumen persistido (veredicto, agente, métricas) con el
+            # estado vivo más reciente mantenido por StateManager.
+            summary.update(sessions[session_id])
+        elif summary.get("status") in {"RUNNING", "REPLANNING"} and session_id not in _running_tasks:
+            summary["status"] = "INTERRUPTED"
+        sessions[session_id] = summary
+    return {"sessions": sorted(sessions.values(), key=lambda item: item.get("updated_at", ""), reverse=True)}
+
+
+@app.get("/dashboard/metrics")
+async def dashboard_metrics():
+    """Métricas agregadas calculadas a partir del historial persistido."""
+    records = MessageBus.list_session_records(limit=1000)
+    summaries = [record.get("summary") or {} for record in records]
+    statuses = [record.get("status", "UNKNOWN") for record in records]
+    completed = sum(status == "COMPLETED" for status in statuses)
+    provenance = [
+        (summary.get("agent_results") or {}).get("mock_mode")
+        for summary in summaries
+    ]
+    real_indexes = [i for i, is_mock in enumerate(provenance) if is_mock is False]
+    mock_indexes = [i for i, is_mock in enumerate(provenance) if is_mock is True]
+    unknown_indexes = [i for i, is_mock in enumerate(provenance) if is_mock is None]
+    approved = sum(summaries[i].get("approved") is True for i in real_indexes)
+    rejected = sum(
+        statuses[i] == "COMPLETED" and summaries[i].get("approved") is False
+        for i in real_indexes
+    )
+    # Solo estas sesiones pertenecen al proceso actual; registros RUNNING viejos
+    # pueden quedar en SQLite tras un cierre inesperado y no son actividad viva.
+    active = sum(status in {"running", "replanning"} for status in _running_tasks.values())
+    elapsed = [
+        float(summaries[i].get("metrics", {}).get("elapsed_seconds", 0))
+        for i in real_indexes
+        if statuses[i] == "COMPLETED"
+        if summaries[i].get("metrics", {}).get("elapsed_seconds") is not None
+    ]
+    tasks = [task for i in real_indexes for task in summaries[i].get("plan", [])]
+    real_completed = sum(statuses[i] == "COMPLETED" for i in real_indexes)
+    return {
+        "missions_total": len(records),
+        "missions_real": len(real_indexes),
+        "missions_mock": len(mock_indexes),
+        "missions_unclassified": len(unknown_indexes),
+        "missions_completed": completed,
+        "missions_failed": sum(statuses[i] == "FAILED" for i in real_indexes),
+        "missions_approved": approved,
+        "missions_rejected": rejected,
+        "sessions_active": active,
+        "tasks_total": len(tasks),
+        "tasks_completed": sum(task.get("status") == "done" for task in tasks),
+        "approval_rate": round(approved / real_completed, 3) if real_completed else None,
+        "average_seconds_completed": round(mean(elapsed), 2) if elapsed else None,
+        # Campo anterior conservado para clientes REST que aún consumen este nombre.
+        "average_seconds": round(mean(elapsed), 2) if elapsed else None,
+    }
+
+
+@app.get("/dashboard/logs")
+async def dashboard_logs(limit: int = 50):
+    """Eventos de mensajes y errores de las sesiones recientes."""
+    events = []
+    for record in MessageBus.list_session_records(limit=30):
+        summary = record.get("summary") or {}
+        for error in summary.get("error_log", []):
+            events.append({"session_id": record["session_id"], "level": "ERROR", "message": error})
+        bus = MessageBus(record["session_id"])
+        for message in bus.get_session_messages(limit=20)[-10:]:
+            events.append({
+                "session_id": record["session_id"],
+                "level": message.get("status", "INFO"),
+                "message": f"{message.get('from_agent')} → {message.get('to_agent')} [{message.get('phase')}]",
+                "timestamp": message.get("timestamp"),
+            })
+    return {"events": events[-max(1, min(limit, 200)): ]}
 
 
 @app.get("/sessions/{session_id}")
@@ -131,10 +216,27 @@ async def get_session(session_id: str):
     """
     session = state_manager.get_session(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail=f"Sesión {session_id} no encontrada")
+        record = MessageBus(session_id).get_session_record()
+        if not record:
+            raise HTTPException(status_code=404, detail=f"Sesión {session_id} no encontrada")
+        summary = record.get("summary") or {}
+        summary.setdefault("session_id", session_id)
+        summary.setdefault("original_request", record.get("request", ""))
+        summary.setdefault("status", record.get("status", "UNKNOWN"))
+        if summary["status"] in {"RUNNING", "REPLANNING"} and session_id not in _running_tasks:
+            summary["status"] = "INTERRUPTED"
+            summary.setdefault("error_log", []).append("Proceso detenido antes de persistir un estado terminal")
+        summary.setdefault("verdict", "PENDING")
+        summary.setdefault("approved", False)
+        _restore_persisted_agent_results(summary, session_id)
+        return summary
 
     summary = session.to_summary()
+    summary["metrics"] = session.metrics
     summary["agent_results"] = session.agent_results
+    evaluation = session.agent_results.get("evaluation", {})
+    summary["verdict"] = evaluation.get("verdict", "PENDING")
+    summary["approved"] = evaluation.get("verdict") == "APPROVED"
     summary["error_log"]     = session.error_log
     summary["plan_detail"]   = [
         {
@@ -147,6 +249,47 @@ async def get_session(session_id: str):
         for st in session.plan
     ]
     return summary
+
+
+def _restore_persisted_agent_results(summary: dict, session_id: str) -> None:
+    """Rearma los resultados visibles para sesiones guardadas con el formato anterior."""
+    results = summary.get("agent_results")
+    if not isinstance(results, dict):
+        results = {}
+        summary["agent_results"] = results
+    if results.get("analysis") and results.get("evaluation"):
+        return
+    for message in MessageBus(session_id).get_session_messages(limit=1000):
+        payload = message.get("payload") or {}
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+        if not isinstance(payload, dict):
+            continue
+        role = message.get("from_agent")
+        if role == "ANALYST" and payload.get("analysis"):
+            results.setdefault("analysis", payload["analysis"])
+        elif role == "STRATEGIST" and payload.get("plan"):
+            results.setdefault("plan", payload["plan"])
+        elif role == "EXECUTOR" and payload.get("execution_result"):
+            if not results.get("execution"):
+                results.setdefault("execution", []).append({"result": payload["execution_result"]})
+        elif role == "EVALUATOR" and payload.get("evaluation"):
+            results.setdefault("evaluation", payload["evaluation"])
+    results.setdefault("memory_context", summary.get("memory_context", ""))
+    if not summary.get("plan_detail"):
+        summary["plan_detail"] = [
+            {
+                "id": item.get("id"),
+                "description": item.get("description", ""),
+                "agent": item.get("agent", "EXECUTOR"),
+                "status": item.get("status", "pending"),
+                "depends_on": item.get("depends_on", []),
+            }
+            for item in (summary.get("plan") if isinstance(summary.get("plan"), list) else [])
+        ]
 
 
 @app.get("/sessions/{session_id}/messages")
@@ -193,11 +336,14 @@ async def list_available_tools():
     from nexo.tools.diagnostic_tool import NetworkDiagnosticTool
     from nexo.tools.system_tool import SystemDiagnosticTool
     from nexo.tools.port_tool import PortCheckTool
+    from nexo.tools.basic_tools import FileReadTool, FileWriteTool
 
     reg = ToolRegistry()
     reg.register(NetworkDiagnosticTool())
     reg.register(SystemDiagnosticTool())
     reg.register(PortCheckTool())
+    reg.register(FileReadTool())
+    reg.register(FileWriteTool())
     return {"tools": reg.list_tools()}
 
 
@@ -208,18 +354,29 @@ async def get_model_status():
     from nexo.providers.base_provider import OllamaProvider
 
     models_info = {}
+    availability_cache = {}
+    server_cache = {}
+    installed_models_cache = {}
     for role, cfg in PROVIDER_CONFIG.items():
-        if role == "default":
-            continue
         model_name = cfg.get("model", "")
-        prov = OllamaProvider(model=model_name, base_url=OLLAMA_BASE_URL)
+        cache_key = (cfg.get("base_url", OLLAMA_BASE_URL), model_name)
+        if cache_key[0] not in installed_models_cache:
+            probe = OllamaProvider(model=model_name, base_url=cache_key[0])
+            installed_models_cache[cache_key[0]] = probe.get_installed_models()
+            server_cache[cache_key[0]] = installed_models_cache[cache_key[0]] is not None
+        if cache_key not in availability_cache:
+            availability_cache[cache_key] = OllamaProvider.model_is_installed(
+                installed_models_cache[cache_key[0]] or [], model_name
+            )
         models_info[role] = {
             "model": model_name,
             "type": cfg.get("type", "mock"),
-            "available_in_ollama": prov.is_available(),
+            "available_in_ollama": availability_cache[cache_key],
         }
     return {
         "ollama_base_url": OLLAMA_BASE_URL,
+        "ollama_connected": any(server_cache.values()),
+        "models_installed": sum(availability_cache.values()),
         "providers": models_info,
     }
 
@@ -230,35 +387,68 @@ def _run_session(session_id: str):
     """Ejecuta el orquestador en un thread separado."""
     try:
         orchestrator = Orchestrator(state_manager)
-        orchestrator.run(session_id)
-        _running_tasks[session_id] = "done"
+        result = orchestrator.run(session_id)
+        _running_tasks[session_id] = result.get("status", "FAILED").lower()
         logger.info("Session %s completed", session_id[:8])
     except Exception as e:
         logger.error("Session %s failed: %s", session_id[:8], e, exc_info=True)
         _running_tasks[session_id] = "error"
-from fastapi import FastAPI, HTTPException
-from nexo.core.orquestador import Orquestador
+        session = state_manager.get_session(session_id)
+        if session:
+            from nexo.core.state_manager import SessionStatus
+            session.status = SessionStatus.FAILED
+            session.error_log.append(str(e))
 
-app = FastAPI()
 
-@app.get("/")
-async def root():
-    return {"message": "NEXO MultiAgent System API"}
-
+# Endpoints heredados conservados como alias del flujo actual.
 @app.post("/start_mission")
-async def start_mission(mission: str):
-    orquestrador = Orquestador()
-    orquestrador.start_mission(mission)
-    return {"status": "success", "message": f"Misión {mission} iniciada"}
+async def start_mission(mission: str, background_tasks: BackgroundTasks):
+    if not mission.strip():
+        raise HTTPException(status_code=400, detail="La misión no puede estar vacía")
+    session = state_manager.create_session(mission.strip())
+    _running_tasks[session.session_id] = "running"
+    background_tasks.add_task(_run_session, session.session_id)
+    return {"status": "success", "session_id": session.session_id, "message": "Misión iniciada"}
+
 
 @app.get("/agents/status")
-async def get_agent_status():
-    orquestrador = Orquestador()
+async def get_agent_status(session_id: str | None = None):
+    from nexo.config import PROVIDER_CONFIG
+    from nexo.schemas.message import AgentID
+
+    session = state_manager.get_session(session_id) if session_id else None
+    persisted_session = MessageBus(session_id).get_session_record() if session_id and not session else None
+    saved_summary = (persisted_session or {}).get("summary", {})
+    models_used = (session.agent_results if session else saved_summary.get("agent_results", {})).get("models_used", {})
+    messages = [message.to_dict() for message in session.messages] if session else []
+    if session_id and not session:
+        messages = MessageBus(session_id).get_session_messages(limit=500)
+    agent_status = {}
+    for agent in (AgentID.ANALYST, AgentID.STRATEGIST, AgentID.EXECUTOR, AgentID.EVALUATOR):
+        status = "idle"
+        for message in messages:
+            if message.get("to_agent") == agent.value:
+                status = "working" if message.get("status") == "PENDING" else str(message.get("status", "idle")).lower()
+            if message.get("from_agent") == agent.value:
+                status = str(message.get("status", "idle")).lower()
+        config = PROVIDER_CONFIG[agent.value]
+        model = models_used.get(agent.value)
+        agent_status[agent.value] = {
+            "status": status,
+            "model": model or config["model"],
+            "model_source": "session" if model else "current_config",
+            "provider": config["type"],
+        }
+    saved_status = (persisted_session or {}).get("status", "idle")
+    if saved_status in {"RUNNING", "REPLANNING"} and session_id not in _running_tasks:
+        saved_status = "interrupted"
+    agent_status["ORCHESTRATOR"] = {
+        "status": session.status.value.lower() if session else str(saved_status).lower(),
+        "model": "Python (coordinación determinista)",
+        "provider": "internal",
+    }
     return {
         "status": "ok",
-        "data": orquestrador.agent_status
+        "agents": agent_status,
+        "sessions": {key: value for key, value in _running_tasks.items()},
     }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

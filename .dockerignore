@@ -1,0 +1,12 @@
+.git
+.aider*
+.env
+.env.*
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+nexo_data.db
+nexo_data_db
+logs

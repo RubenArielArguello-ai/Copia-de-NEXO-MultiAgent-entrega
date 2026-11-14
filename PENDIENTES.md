@@ -1,8 +1,18 @@
-# Pendientes NEXO
-1. 7 tests fallan, 49 pasan. Son descuadres entre tests y código:
-   - tests/test_config.py importa PROVIDER_CONFIG como variable, pero en nexo/core/config.py es un método.
-   - ConfigManager no tiene el atributo max_iterations.
-   - Orchestrator (nexo/core/orchestrator.py) no tiene start_mission, solo run().
-2. La función de porcentaje de avance quedó en nexo/core/orchestador.py (con "ch"). Hay que moverla a orchestrator.py.
-3. Borrar los duplicados nexo/core/orchestador.py y nexo/core/orquestador.py cuando todo pase.
-4. La tarea de Dockerfile no hizo cambios. Hacerla a mano o con otro modelo.
+# Estado de entrega NEXO
+
+## Alcance listo para presentar
+
+- README y documentación técnica describen el código actual: Orquestador Python, cuatro agentes LLM, herramientas registradas, Ollama, SQLite y Chroma.
+- La misión `ee0d35a4` se documenta con resultado `COMPLETED / APPROVED` y con `prueba_nexo_final.txt` como evidencia de escritura, lectura y verificación.
+- La guía de defensa y los archivos de presentación están enlazados desde el README.
+- Se conservaron los cambios y archivos existentes. Este cierre fue documental; no se ejecutaron pruebas ni se reiniciaron servicios.
+
+## Limitaciones conocidas
+
+- La inferencia depende de Ollama, los modelos locales instalados y los recursos del equipo.
+- Las acciones están limitadas a herramientas registradas; los resultados del modelo pueden necesitar revisión humana.
+- La ruta auxiliar LangChain de ejecución Python hereda permisos del proceso.
+- No se construyó una imagen Docker.
+- El adaptador Chroma actual emite aviso de deprecación.
+
+Ver [informe final](INFORME_FINAL.md) y [guía de presentación](GUIA_PRESENTACION.md) para el resumen de entrega.

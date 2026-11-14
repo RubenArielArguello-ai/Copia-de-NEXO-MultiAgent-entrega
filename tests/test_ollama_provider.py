@@ -131,7 +131,7 @@ class TestOllamaProviderLogic:
 
 
 class TestProviderFactory:
-    """Verifica el factory build_provider y su fallback."""
+    """Verifica el factory build_provider sin ocultar fallos del proveedor real."""
 
     def test_build_provider_returns_mock_when_specified(self):
         cfg = {"ANALYST": {"type": "mock"}}
@@ -139,9 +139,7 @@ class TestProviderFactory:
         assert isinstance(p, MockProvider)
 
     @patch.object(OllamaProvider, "is_available", return_value=False)
-    def test_build_provider_falls_back_to_mock_when_ollama_unavailable(self, mock_avail):
+    def test_build_provider_fails_when_configured_ollama_is_unavailable(self, mock_avail):
         cfg = {"EXECUTOR": {"type": "ollama", "model": "qwen2.5-coder:7b"}}
-        p = build_provider("EXECUTOR", cfg)
-        # Como is_available devuelve False, debe caer a MockProvider
-        assert isinstance(p, MockProvider)
-        assert p.role == "EXECUTOR"
+        with pytest.raises(ConnectionError, match="no está disponible"):
+            build_provider("EXECUTOR", cfg)

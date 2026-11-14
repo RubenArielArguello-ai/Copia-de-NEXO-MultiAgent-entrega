@@ -58,6 +58,22 @@ class BaseAgent(ABC):
             **kwargs,
         )
 
+    def call_llm_json(self, user_prompt: str, max_attempts: int = 2) -> dict[str, Any]:
+        """Solicita JSON y reintenta una vez con instrucciones de reparación si el parseo falla."""
+        raw = self.call_llm(user_prompt, format="json", max_tokens=1024)
+        parsed = self.parse_json_response(raw)
+        attempt = 1
+        while parsed.get("parse_error") and attempt < max_attempts:
+            attempt += 1
+            repair_prompt = (
+                f"{user_prompt}\n\nTu respuesta anterior no era JSON válido. "
+                "Devuelve únicamente un objeto JSON válido con los campos solicitados. "
+                f"Respuesta anterior (referencia): {raw[:1500]}"
+            )
+            raw = self.call_llm(repair_prompt, format="json", max_tokens=1024)
+            parsed = self.parse_json_response(raw)
+        return parsed
+
     def parse_json_response(self, raw: str) -> dict[str, Any]:
         """
         Intenta parsear la respuesta del LLM como JSON de manera ultra-resiliente.

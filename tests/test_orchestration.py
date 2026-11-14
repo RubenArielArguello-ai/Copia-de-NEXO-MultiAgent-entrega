@@ -1,30 +1,30 @@
 import unittest
+from unittest.mock import patch
 from nexo.core.orchestrator import Orchestrator
-from nexo.agents.analyst import AnalystAgent
-from nexo.agents.strategist import StrategistAgent
-from nexo.agents.executor import ExecutorAgent
-from nexo.agents.evaluator import EvaluatorAgent
-from nexo.core.message_bus import MessageBus
+from nexo.core.state_manager import StateManager
+from nexo.providers.base_provider import MockProvider
 
 class TestOrchestration(unittest.TestCase):
     def setUp(self):
-        self.bus = MessageBus("test_session")
-        self.orquestrator = Orchestrator(self.bus)
-        self.analyst = AnalystAgent(None, self.bus)
-        self.strategist = StrategistAgent(None, self.bus)
-        self.executor = ExecutorAgent(None, self.bus)
-        self.evaluator = EvaluatorAgent(None, self.bus)
+        self.state_manager = StateManager()
+        self.orchestrator = Orchestrator(self.state_manager)
+        self.network_patch = patch(
+            "nexo.tools.diagnostic_tool.NetworkDiagnosticTool.execute",
+            return_value={"tool": "network_diagnostic", "output": {"status": "mocked"}, "success": True},
+        )
+        self.network_patch.start()
+
+    def tearDown(self):
+        self.network_patch.stop()
 
     def test_orchestration_flow(self):
-        # Start a mission
-        self.orquestrator.start_mission("Test Mission")
+        with patch("nexo.core.orchestrator.build_provider", side_effect=lambda role, cfg: MockProvider(role)):
+            session = self.state_manager.create_session("Test Mission: diagnosticar la conexión a Internet")
+            result = self.orchestrator.run(session.session_id)
 
-        # Check if the mission is distributed to agents
-        messages = self.bus.get_session_messages()
-        self.assertIn(AgentID.ANALYST.value, [msg.to_agent for msg in messages])
-        self.assertIn(AgentID.STRATEGIST.value, [msg.to_agent for msg in messages])
-        self.assertIn(AgentID.EXECUTOR.value, [msg.to_agent for msg in messages])
-        self.assertIn(AgentID.EVALUATOR.value, [msg.to_agent for msg in messages])
+        self.assertIn(result["status"], ("COMPLETED", "FAILED"))
+        recipients = {message["to_agent"] for message in result["messages"]}
+        self.assertTrue({"ANALYST", "STRATEGIST", "EXECUTOR", "EVALUATOR"}.issubset(recipients))
 
 if __name__ == '__main__':
     unittest.main()

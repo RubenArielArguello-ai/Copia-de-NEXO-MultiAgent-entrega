@@ -3,7 +3,7 @@ NEXO — Proveedores de modelos de lenguaje.
 
 Interfaz abstracta + implementaciones para:
   - OllamaProvider: modelos locales vía Ollama HTTP API con reintentos y telemetría
-  - MockProvider:   respuestas deterministas para tests y fallback sin LLM
+  - MockProvider:   respuestas deterministas seleccionadas explícitamente para tests
 """
 
 from __future__ import annotations
@@ -82,6 +82,8 @@ class OllamaProvider(BaseLLMProvider):
                 "num_predict": kwargs.get("max_tokens", 512),
             }
         }
+        if kwargs.get("format") == "json":
+            payload["format"] = "json"
 
         data = json.dumps(payload).encode("utf-8")
         last_error: Optional[Exception] = None
@@ -147,37 +149,42 @@ class OllamaProvider(BaseLLMProvider):
         Verifica si Ollama está en línea y si el modelo está instalado.
         Soporta matching flexible de tags (ej: gemma4:12b-mlx vs gemma4).
         """
+        models = self.get_installed_models()
+        return self.model_is_installed(models or [], self.model)
+
+    def get_installed_models(self) -> Optional[list[str]]:
+        """Consulta Ollama una vez y devuelve `None` si el servidor no responde."""
         try:
             req = urllib.request.Request(
                 f"{self.base_url}/api/tags",
                 headers={"Accept": "application/json"},
-                method="GET"
+                method="GET",
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
-                models = [m.get("name", "") for m in body.get("models", [])]
-
-                target = self.model.strip().lower()
-                target_base = target.split(":")[0]
-
-                # 1. Coincidencia exacta
-                if any(m.lower() == target for m in models):
-                    return True
-                # 2. Coincidencia de prefijo o tag
-                if any(target in m.lower() or m.lower() in target for m in models):
-                    return True
-                # 3. Coincidencia base
-                if any(m.lower().split(":")[0] == target_base for m in models):
-                    return True
-
-                return False
+            return [str(item.get("name", "")) for item in body.get("models", [])]
         except Exception:
-            return False
+            return None
+
+    @staticmethod
+    def model_is_installed(models: list[str], model: str) -> bool:
+        target = model.strip().lower()
+        target_base = target.split(":")[0]
+        lowered = [name.lower() for name in models]
+        return (
+            any(name == target for name in lowered)
+            or any(target in name or name in target for name in lowered)
+            or any(name.split(":")[0] == target_base for name in lowered)
+        )
+
+    def is_server_available(self) -> bool:
+        """Distingue un servidor Ollama accesible de un modelo ausente."""
+        return self.get_installed_models() is not None
 
 
 class MockProvider(BaseLLMProvider):
     """
-    Proveedor determinista para tests automatizados y fallback.
+    Proveedor determinista para tests automatizados cuando se configura explícitamente.
     No requiere Ollama. Las respuestas simulan comportamiento realista.
     """
 
@@ -247,15 +254,17 @@ class MockProvider(BaseLLMProvider):
 
 def build_provider(agent_role: str, config: Optional[dict[str, Any]] = None) -> BaseLLMProvider:
     """
-    Factory que construye el proveedor correcto para cada rol de agente.
-    Verifica disponibilidad y cae graciosamente a MockProvider con logging explícito.
+    Factory que construye el proveedor configurado. Ollama no se sustituye
+    silenciosamente por respuestas simuladas cuando no está disponible.
     """
     if config is None:
         from nexo.config import PROVIDER_CONFIG
         config = PROVIDER_CONFIG
 
-    provider_cfg = config.get(agent_role, config.get("default", {"type": "mock"}))
-    ptype = provider_cfg.get("type", "mock").lower()
+    provider_cfg = config.get(agent_role)
+    if provider_cfg is None:
+        raise KeyError(f"No hay configuración de proveedor para el rol {agent_role}")
+    ptype = str(provider_cfg.get("type", "")).lower()
 
     if ptype == "ollama":
         model    = provider_cfg.get("model", "gemma4:12b-mlx")
@@ -265,11 +274,12 @@ def build_provider(agent_role: str, config: Optional[dict[str, Any]] = None) -> 
 
         provider = OllamaProvider(model=model, base_url=base_url, timeout=timeout, max_retries=retries)
         if not provider.is_available():
-            logger.warning(
-                "Ollama model '%s' no disponible en %s para %s. Usando MockProvider como fallback.",
-                model, base_url, agent_role
+            raise ConnectionError(
+                f"Ollama o el modelo '{model}' no está disponible en {base_url} para {agent_role}. "
+                "Iniciá Ollama o configurá explícitamente type='mock' solo para pruebas."
             )
-            return MockProvider(role=agent_role)
         return provider
 
-    return MockProvider(role=agent_role)
+    if ptype == "mock":
+        return MockProvider(role=agent_role)
+    raise ValueError(f"Proveedor no soportado para {agent_role}: {ptype}")

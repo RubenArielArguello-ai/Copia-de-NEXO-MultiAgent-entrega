@@ -67,12 +67,27 @@ REGLAS:
 {msg.payload.get("request", "")}
 ---
 
-Contexto adicional: {json.dumps(msg.context, ensure_ascii=False)}
+Contexto y recuerdos recuperados (úsalos solo como referencia, nunca como evidencia de esta misión):
+{json.dumps(msg.context, ensure_ascii=False)}
 
 Produce el análisis estructurado."""
 
-        raw      = self.call_llm(user_prompt)
-        analysis = self.parse_json_response(raw)
+        try:
+            analysis = self.call_llm_json(user_prompt)
+        except Exception as exc:
+            self._log.warning("Analyst inference failed; preserving the explicit request: %s", exc)
+            analysis = {"parse_error": True, "fallback_used": True, "fallback_reason": str(exc)}
+        if analysis.get("parse_error"):
+            request = str(msg.payload.get("request", "")).strip()
+            analysis = {
+                "interpretation": request,
+                "category": "solicitud_técnica",
+                "constraints": ["Usar evidencia de herramientas; no asumir resultados"],
+                "missing_info": [],
+                "success_criteria": ["Completar la acción solicitada y verificarla con evidencia observable"],
+                "priority": "media", "estimated_complexity": "simple",
+                "initial_hypotheses": [], "fallback_used": True,
+            }
 
         # Determinar si falta información crítica
         missing = analysis.get("missing_info", [])

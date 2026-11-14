@@ -17,7 +17,7 @@ El proceso cognitivo de NEXO emula el ciclo de razonamiento humano para resoluci
 ### 2. Interpretación
 **Componente:** Agente Analista  
 **Qué hace:** Analiza el texto del usuario sin asumir información no declarada. Identifica la categoría del problema, restricciones, información faltante e hipótesis iniciales.  
-**LLM:** gemma4:12b-mlx  
+**LLM:** qwen2.5-coder:7b (predeterminado; configurable por rol)
 **Salida:** JSON estructurado con `interpretation`, `success_criteria`, `missing_info`, `initial_hypotheses`  
 
 > *El Analista es el primer filtro cognitivo. Si no puede categorizar el problema, lo reporta en lugar de inventar una categoría.*
@@ -34,7 +34,7 @@ El proceso cognitivo de NEXO emula el ciclo de razonamiento humano para resoluci
 ### 4. Planificación
 **Componente:** Agente Estratega  
 **Qué hace:** Diseña un plan de resolución como grafo de subtareas con dependencias explícitas. Asigna cada tarea al agente correcto.  
-**LLM:** gemma4:12b-mlx  
+**LLM:** qwen2.5-coder:7b (predeterminado; configurable por rol)
 **Salida:** Lista de `SubTask` con `id`, `description`, `assigned_to`, `depends_on`  
 
 > *El Estratega puede recibir el plan de vuelta con correcciones del Evaluador y replanificar.*
@@ -66,7 +66,7 @@ El proceso cognitivo de NEXO emula el ciclo de razonamiento humano para resoluci
 ### 8. Evaluación
 **Componente:** Agente Evaluador  
 **Qué hace:** Compara los resultados de ejecución contra los criterios de éxito definidos en la etapa de Interpretación. Verifica que la evidencia sea suficiente. Puede rechazar resultados vagos o contradictorios.  
-**LLM:** gemma4:12b-mlx  
+**LLM:** qwen2.5-coder:7b (predeterminado; configurable por rol)
 **Salida:** Veredicto `APPROVED | NEEDS_CORRECTION | REJECTED` con razones  
 
 > *El Evaluador es el guardián de la calidad. Es intencionalmente exigente.*
