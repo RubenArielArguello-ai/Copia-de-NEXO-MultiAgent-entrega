@@ -271,3 +271,4 @@ class NetworkDiagnosticTool(BaseTool):
             return all(0 <= int(p) <= 255 for p in parts)
         except ValueError:
             return False
+    timeout_seconds = 25

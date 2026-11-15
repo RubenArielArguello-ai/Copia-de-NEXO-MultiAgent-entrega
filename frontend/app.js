@@ -196,7 +196,7 @@ function updateUI(session, messages, coherenceEvents = [], toolExecutions = [], 
       const title = document.createElement('strong');
       title.textContent = `${task.id}: ${task.description}`;
       const meta = document.createElement('span');
-      meta.textContent = `${task.agent} · ${task.status}${task.depends_on?.length ? ` · depende de ${task.depends_on.join(', ')}` : ''}`;
+      meta.textContent = `${task.agent} · ${task.status}${task.skill ? ` · Skill ${task.skill}` : ''}${task.tool ? ` · tool ${task.tool}` : ''}${task.permission ? ` · permiso ${task.permission}` : ''}${task.depends_on?.length ? ` · depende de ${task.depends_on.join(', ')}` : ''}`;
       row.append(title, meta);
       plan.append(row);
     });
@@ -233,6 +233,7 @@ function updateUI(session, messages, coherenceEvents = [], toolExecutions = [], 
   document.getElementById('current-mission').textContent = objective;
   const memoryContext = session.agent_results?.memory_context || session.memory_context || '';
   document.getElementById('memory-context').textContent = memoryContext || 'No había recuerdos relevantes o la memoria estaba vacía.';
+  renderHarness(session.agent_results?.harness);
 
   const latest = coherenceEvents[coherenceEvents.length - 1];
   const sessionScore = session.coherence_score == null ? Number.NaN : Number(session.coherence_score);
@@ -291,6 +292,32 @@ function updateUI(session, messages, coherenceEvents = [], toolExecutions = [], 
   }
 
   renderEvaluation(session.agent_results?.evaluation, session);
+}
+
+function renderHarness(harness) {
+  const state = document.getElementById('harness-state');
+  const summary = document.getElementById('harness-summary');
+  const events = document.getElementById('harness-events');
+  if (!state || !summary || !events) return;
+  if (!harness || typeof harness !== 'object') {
+    state.textContent = 'Sin datos';
+    summary.textContent = 'No hay datos del Harness para esta misión.';
+    events.replaceChildren();
+    return;
+  }
+  state.textContent = String(harness.state || 'unknown').toUpperCase();
+  summary.textContent = `Tareas iniciadas: ${harness.tasks_started ?? 0}/${harness.task_budget ?? '—'} · completas: ${harness.tasks_completed ?? 0} · fallidas: ${harness.tasks_failed ?? 0} · bloqueadas: ${harness.blocked_operations ?? 0} · tiempo: ${harness.elapsed_seconds ?? '—'}s / ${harness.timeout_seconds ?? '—'}s`;
+  events.replaceChildren();
+  (Array.isArray(harness.events) ? harness.events.slice(-12) : []).forEach((event) => {
+    const row = document.createElement('article');
+    row.className = 'message-card';
+    const line = document.createElement('span');
+    const permission = event.permission && typeof event.permission === 'object' ? JSON.stringify(event.permission) : event.permission;
+    line.textContent = `${event.event || 'evento'} · ${event.task_id || 'misión'} · ${event.agent || 'ORCHESTRATOR'} · ${event.tool || ''}${permission ? ` · permiso ${permission}` : ''}${event.error ? ` · ${event.error}` : ''}${event.reason ? ` · ${event.reason}` : ''}`;
+    row.append(line);
+    events.append(row);
+  });
+  if (!events.childElementCount) events.innerHTML = '<div class="empty-state">Todavía no hay ejecuciones del Harness.</div>';
 }
 
 function summarizeMessage(message) {

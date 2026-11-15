@@ -22,6 +22,7 @@ SECRET_PATTERN = re.compile(r"(?i)(api[_-]?key|token|password|secret|authorizati
 
 class LogAnalysisTool(BaseTool):
     """Read a bounded workspace log and return redacted counts/pattern evidence."""
+    timeout_seconds = 5
     @property
     def name(self): return "log_analysis"
 
@@ -55,6 +56,7 @@ class LogAnalysisTool(BaseTool):
 
 class CodeEngineeringTool(BaseTool):
     """Static Python inspection. Never imports or executes inspected code."""
+    timeout_seconds = 5
     @property
     def name(self): return "code_engineering"
 
@@ -98,6 +100,7 @@ class CodeEngineeringTool(BaseTool):
 
 class HTTPHealthCheckTool(BaseTool):
     """Fetch public HTTP(S) endpoints while rejecting private/local destinations."""
+    timeout_seconds = 7
     @property
     def name(self): return "http_health_check"
 
@@ -162,6 +165,7 @@ class HTTPHealthCheckTool(BaseTool):
 
 class ReportGenerationTool(BaseTool):
     """Produce a report strictly from observed prior tool outputs."""
+    timeout_seconds = 5
     @property
     def name(self): return "report_generation"
 

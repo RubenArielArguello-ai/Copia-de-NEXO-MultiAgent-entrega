@@ -12,11 +12,14 @@ from __future__ import annotations
 import re
 import time
 import logging
+import queue
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+_TOOL_RUNTIME_LOCK = threading.Lock()
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -167,28 +170,45 @@ class BaseTool(ABC):
                 "duration_ms": 0.0,
             }
 
+        with _TOOL_RUNTIME_LOCK:
+            if getattr(self, "_execution_active", False):
+                return {"tool": tool_name, "success": False, "error": "Una ejecución de esta herramienta sigue activa", "output": {}, "duration_ms": 0.0}
+            self._execution_active = True
+        outcome: queue.Queue = queue.Queue(maxsize=1)
+
+        def invoke():
+            try:
+                outcome.put((True, self.execute(context)))
+            except BaseException as exc:
+                outcome.put((False, exc))
+            finally:
+                with _TOOL_RUNTIME_LOCK:
+                    self._execution_active = False
+
+        worker = threading.Thread(target=invoke, name=f"nexo-tool-{tool_name}", daemon=True)
+        worker.start()
+        worker.join(max(0.01, float(self.timeout_seconds)))
+        elapsed_ms = (time.time() - t0) * 1000
+        if worker.is_alive():
+            logger.error("[TOOL] Timed out executing '%s' after %.2fs", tool_name, self.timeout_seconds)
+            return {"tool": tool_name, "success": False,
+                    "error": f"Tiempo límite excedido ({self.timeout_seconds}s)",
+                    "output": {}, "duration_ms": round(elapsed_ms, 2), "timed_out": True}
         try:
-            result = self.execute(context)
-            elapsed_ms = (time.time() - t0) * 1000
-
-            if not isinstance(result, dict):
-                result = {"output": result}
-
-            result["tool"] = tool_name
-            result["success"] = result.get("success", True)
-            result["duration_ms"] = round(elapsed_ms, 2)
-            return result
-
-        except Exception as e:
-            elapsed_ms = (time.time() - t0) * 1000
-            logger.error("[TOOL] Exception executing '%s': %s", tool_name, e, exc_info=True)
-            return {
-                "tool":        tool_name,
-                "success":     False,
-                "error":       str(e),
-                "output":      {},
-                "duration_ms": round(elapsed_ms, 2),
-            }
+            succeeded, result = outcome.get_nowait()
+        except queue.Empty:
+            return {"tool": tool_name, "success": False, "error": "La herramienta terminó sin resultado",
+                    "output": {}, "duration_ms": round(elapsed_ms, 2)}
+        if not succeeded:
+            logger.error("[TOOL] Exception executing '%s': %s", tool_name, type(result).__name__)
+            return {"tool": tool_name, "success": False, "error": f"Error interno: {type(result).__name__}",
+                    "output": {}, "duration_ms": round(elapsed_ms, 2)}
+        if not isinstance(result, dict):
+            result = {"output": result}
+        result["tool"] = tool_name
+        result["success"] = result.get("success", True)
+        result["duration_ms"] = round(elapsed_ms, 2)
+        return result
 
 
 # ──────────────────────────────────────────────────────────────────────

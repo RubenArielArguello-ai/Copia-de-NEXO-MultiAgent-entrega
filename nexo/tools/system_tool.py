@@ -155,3 +155,4 @@ class SystemDiagnosticTool(BaseTool):
         if not allowed:
             raise PermissionError(reason)
         return subprocess.run(command, capture_output=True, text=True, timeout=2)
+    timeout_seconds = 8

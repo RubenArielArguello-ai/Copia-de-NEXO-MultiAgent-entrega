@@ -94,3 +94,4 @@ class PortCheckTool(BaseTool):
             },
             "success": True,
         }
+    timeout_seconds = 12

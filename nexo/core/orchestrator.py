@@ -31,6 +31,7 @@ from nexo.agents.executor   import ExecutorAgent
 from nexo.agents.evaluator  import EvaluatorAgent
 from nexo.tools.coherence_monitor import CoherenceMonitor
 from nexo.skills import SkillRegistry
+from nexo.core.harness import MissionHarness
 from nexo.schemas.message import (
     NexoMessage, AgentID, MessageStatus, TaskPhase, CoherenceFlag
 )
@@ -57,6 +58,7 @@ class Orchestrator:
         self.max_replanning    = ORCHESTRATOR_CONFIG["max_replanning_cycles"]
         self.coherence_thr     = ORCHESTRATOR_CONFIG["coherence_threshold"]
         self._log              = logging.getLogger("nexo.orchestrator")
+        self.harness: MissionHarness | None = None
 
     # ──────────────────────────────────────────────────────────────────
     # Punto de entrada público
@@ -74,6 +76,12 @@ class Orchestrator:
 
         start_time  = time.time()
         replan_count = 0
+        self.harness = MissionHarness(
+            session_id,
+            timeout_seconds=ORCHESTRATOR_CONFIG["timeout_seconds"],
+            max_tasks=ORCHESTRATOR_CONFIG["max_tool_executions"],
+        )
+        session.agent_results["harness"] = self.harness.snapshot()
 
         self._log.info("=== NEXO SESSION START [%s] ===", session_id[:8])
         self._log.info("Request: %.100s", session.original_request)
@@ -85,6 +93,7 @@ class Orchestrator:
         session.status = SessionStatus.RUNNING
 
         try:
+            self.harness.check_active()
             # Construir agentes con sus proveedores. Una configuración real de
             # Ollama que no esté disponible falla aquí; no se sustituye por mock.
             agents = self._build_agents(bus)
@@ -103,16 +112,19 @@ class Orchestrator:
 
             # ── FASE 1: PERCEPCIÓN + ANÁLISIS ─────────────────────────
             analysis = self._phase_analysis(session, bus, agents)
+            self.harness.check_active()
             if not analysis or analysis.get("parse_error"):
                 return self._fail(session, bus, "El Analista no pudo interpretar la solicitud")
 
             # ── FASE 2: PLANIFICACIÓN ─────────────────────────────────
             plan = self._phase_planning(session, bus, agents, analysis)
+            self.harness.check_active()
             if not plan:
                 return self._fail(session, bus, "El Estratega no pudo generar un plan")
 
             # ── CICLO: EJECUCIÓN + EVALUACIÓN + CORRECCIÓN ────────────
             while session.iteration < self.max_iterations:
+                self.harness.check_active()
                 session.iteration = self.state_manager.increment_iteration(session_id)
                 self._log.info("--- Iteration %d/%d ---", session.iteration, self.max_iterations)
 
@@ -200,6 +212,10 @@ class Orchestrator:
 
         # ── Métricas finales ──────────────────────────────────────────
         elapsed = time.time() - start_time
+        if self.harness:
+            self.harness.finish("failed" if session.status == SessionStatus.FAILED else "completed")
+        harness_summary = self.harness.snapshot() if self.harness else {}
+        session.agent_results["harness"] = harness_summary
         session.metrics.update({
             "end_time":       time.time(),
             "elapsed_seconds": round(elapsed, 2),
@@ -207,6 +223,8 @@ class Orchestrator:
             "replan_count":   replan_count,
             "coherence_score": session.coherence_score,
             "message_count":  len(session.messages),
+            "harness_tasks_started": harness_summary.get("tasks_started", 0),
+            "harness_blocked_operations": harness_summary.get("blocked_operations", 0),
         })
 
         self._log.info(
@@ -235,6 +253,9 @@ class Orchestrator:
                     "description": st.description,
                     "agent":       st.assigned_to,
                     "status":      st.status,
+                    "tool":        st.tool_name,
+                    "skill":       st.skill_name,
+                    "permission":  st.permission,
                 }
                 for st in session.plan
             ],
@@ -245,6 +266,9 @@ class Orchestrator:
                     "agent": st.assigned_to,
                     "status": st.status,
                     "depends_on": st.depends_on,
+                    "tool": st.tool_name,
+                    "skill": st.skill_name,
+                    "permission": st.permission,
                 }
                 for st in session.plan
             ],
@@ -390,11 +414,15 @@ class Orchestrator:
             # Registrar el plan en el estado de sesión
             session.plan.clear()
             for task in tasks:
+                skill = self.skill_registry.by_tool(task.get("tool", ""))
                 session.add_subtask(SubTask(
                     task_id=task.get("id", "T?"),
                     description=task.get("task", ""),
                     assigned_to=task.get("agent", "EXECUTOR"),
                     depends_on=task.get("depends_on", []),
+                    tool_name=task.get("tool"),
+                    skill_name=skill.name if skill else None,
+                    permission=skill.permission if skill else None,
                 ))
             session.agent_results["plan"] = plan_data
             return tasks
@@ -423,6 +451,8 @@ class Orchestrator:
         }
 
         for task in plan:
+            if self.harness:
+                self.harness.check_active()
             task_id  = task.get("id", "?")
             agent    = task.get("agent", "EXECUTOR")
             deps     = task.get("depends_on", [])
@@ -444,6 +474,9 @@ class Orchestrator:
                 continue
 
             if agent == "EXECUTOR":
+                if self.harness:
+                    self.harness.begin_task(task_id, agent, planned_tool or "unresolved")
+                    session.agent_results["harness"] = self.harness.snapshot()
                 session.update_subtask(task_id, "active")
 
                 msg = NexoMessage(
@@ -474,6 +507,16 @@ class Orchestrator:
                     session.add_message(response)
                     exec_result = response.payload.get("execution_result", {})
                     results.append({"task_id": task_id, "result": exec_result})
+                    if self.harness:
+                        self.harness.finish_task(
+                            task_id, agent, exec_result.get("tool_used", planned_tool or "unknown"),
+                            bool(exec_result.get("tool_success")),
+                            float(exec_result.get("tool_duration_ms", 0)),
+                            skill_audit=exec_result.get("raw_results", {}).get("skill_audit")
+                            if isinstance(exec_result.get("raw_results"), dict) else None,
+                            error=exec_result.get("tool_error"),
+                        )
+                        session.agent_results["harness"] = self.harness.snapshot()
 
                     # Registrar ejecución en el historial de SQLite
                     bus.record_tool_execution(
@@ -616,12 +659,18 @@ class Orchestrator:
 
     def _fail(self, session: SessionState, bus: MessageBus, reason: str) -> dict:
         session.status = SessionStatus.FAILED
+        if self.harness:
+            self.harness.finish("failed")
         session.error_log.append(reason)
         session.metrics.update({
             "end_time": time.time(),
             "iterations": session.iteration,
             "message_count": len(session.messages),
         })
+        if self.harness:
+            session.agent_results["harness"] = self.harness.snapshot()
+            session.metrics["harness_tasks_started"] = session.agent_results["harness"].get("tasks_started", 0)
+            session.metrics["harness_blocked_operations"] = session.agent_results["harness"].get("blocked_operations", 0)
         result = {
             **session.to_summary(),
             "status": "FAILED",
@@ -635,7 +684,9 @@ class Orchestrator:
             "messages": [m.to_dict() for m in session.messages],
             "plan": [
                 {"id": task.task_id, "description": task.description,
-                 "agent": task.assigned_to, "status": task.status}
+                 "agent": task.assigned_to, "status": task.status,
+                 "tool": task.tool_name, "skill": task.skill_name,
+                 "permission": task.permission}
                 for task in session.plan
             ],
         }

@@ -82,6 +82,20 @@ def test_evaluator_approves_only_complete_registered_skill_evidence():
     assert result.payload["evaluation"]["evaluation_method"] == "deterministic_skill_evidence_gate"
 
 
+def test_evaluator_rejects_conflicting_literal_file_evidence():
+    request = 'Crea el archivo resultado.txt con el contenido exacto "correcto"'
+    results = [
+        {"task_id": "write", "result": {"tool_used": "file_write", "tool_success": True,
+         "can_complete": True, "raw_results": {"content": "incorrecto"}}}
+    ]
+    message = NexoMessage(from_agent=AgentID.ORCHESTRATOR, to_agent=AgentID.EVALUATOR,
+        task_id="unit-file", goal=request, phase=TaskPhase.EVALUATION,
+        payload={"execution_results": results, "analysis": {}},
+        context={"original_request": request}, status=MessageStatus.PENDING)
+    evaluated = EvaluatorAgent(MockProvider("EVALUATOR"), None).process(message)
+    assert evaluated.payload["evaluation"]["verdict"] == "REJECTED"
+
+
 def test_registry_selects_composite_mission_skills():
     skills = SkillRegistry().select_all("Diagnostica recursos del sistema y conectividad; genera un informe")
     assert {skill.tool_name for skill in skills} >= {"system_diagnostic", "network_diagnostic", "report_generation"}

@@ -44,6 +44,12 @@ class SkillRegistry:
                  "dependencies": list(s.dependencies)}
                 for s in self._skills.values()]
 
+    def get(self, name: str) -> Skill | None:
+        return self._skills.get(name)
+
+    def by_tool(self, tool_name: str) -> Skill | None:
+        return next((skill for skill in self._skills.values() if skill.tool_name == tool_name), None)
+
     def select(self, task: str, agent: str = "EXECUTOR") -> Skill | None:
         text = task.casefold()
         explicit = [s for s in self._skills.values() if agent in s.agents and

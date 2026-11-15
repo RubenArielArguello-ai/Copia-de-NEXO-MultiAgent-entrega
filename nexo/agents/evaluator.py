@@ -147,13 +147,16 @@ corrections_needed, summary y final_answer. Aprueba solo si hay evidencia sufici
                 evaluation["corrections_needed"] = list(evaluation.get("corrections_needed", [])) + [
                     "Ejecutar las Skills faltantes y regenerar el informe a partir de sus resultados"
                 ]
-            else:
+            elif file_evidence_matches is not False:
                 verdict = "APPROVED"
                 evaluation["goal_achieved"] = True
                 evaluation["evidence_quality"] = "VERIFIED"
                 evaluation["confidence"] = 1.0
                 evaluation["summary"] = report_output.get("conclusion", "Las herramientas requeridas produjeron evidencia observada.")
                 evaluation["final_answer"] = report_output.get("report_text", evaluation["summary"])
+        if file_evidence_matches is False:
+            verdict = "REJECTED"
+            evaluation["goal_achieved"] = False
         evaluation["verdict"] = verdict
         evaluation.setdefault("confidence", 0.0)
         evaluation.setdefault("issues_found", [])

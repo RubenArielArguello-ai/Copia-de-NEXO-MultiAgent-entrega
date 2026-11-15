@@ -33,6 +33,9 @@ class SubTask:
     description: str
     assigned_to: str
     depends_on:  list[str] = field(default_factory=list)
+    tool_name:  Optional[str] = None
+    skill_name: Optional[str] = None
+    permission: Optional[str] = None
     status:      str       = "pending"   # pending, active, done, failed
     result:      Any       = None
     created_at:  str       = field(

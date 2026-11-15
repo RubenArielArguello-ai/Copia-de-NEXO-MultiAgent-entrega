@@ -96,6 +96,7 @@ ORCHESTRATOR_CONFIG = {
     "max_replanning_cycles":  validate_env_var("NEXO_MAX_REPLANNING", 2),
     "coherence_threshold":    validate_env_var("NEXO_COHERENCE_THRESHOLD", 0.6),
     "timeout_seconds":        validate_env_var("NEXO_SESSION_TIMEOUT", 300),
+    "max_tool_executions":    validate_env_var("NEXO_MAX_TOOL_EXECUTIONS", 20),
 }
 
 # ─────────────────────────────────────────────

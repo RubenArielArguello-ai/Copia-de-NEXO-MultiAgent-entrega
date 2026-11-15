@@ -67,6 +67,7 @@ recommendation, confidence y can_complete."""
             "raw_results": observed,
             "tool_success": bool(tool_result.get("success")),
             "tool_error": tool_result.get("error"),
+            "tool_duration_ms": tool_result.get("duration_ms", 0.0),
             "task_executed": task,
             "steps": ["Herramienta ejecutada"] if tool_result.get("tool") != "none" else [],
             "conclusion": str(tool_result.get("output", {}).get("report_text") or tool_result.get("output", {}).get("content", tool_result.get("output", {}).get("message", "Resultado registrado.")))[:1200],

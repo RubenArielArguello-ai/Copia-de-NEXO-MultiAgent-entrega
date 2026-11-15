@@ -284,6 +284,9 @@ async def get_session(session_id: str):
             "agent":       st.assigned_to,
             "status":      st.status,
             "depends_on":  st.depends_on,
+            "tool":        st.tool_name,
+            "skill":       st.skill_name,
+            "permission":  st.permission,
         }
         for st in session.plan
     ]
@@ -326,6 +329,9 @@ def _restore_persisted_agent_results(summary: dict, session_id: str) -> None:
                 "agent": item.get("agent", "EXECUTOR"),
                 "status": item.get("status", "pending"),
                 "depends_on": item.get("depends_on", []),
+                "tool": item.get("tool"),
+                "skill": item.get("skill"),
+                "permission": item.get("permission"),
             }
             for item in (summary.get("plan") if isinstance(summary.get("plan"), list) else [])
         ]
