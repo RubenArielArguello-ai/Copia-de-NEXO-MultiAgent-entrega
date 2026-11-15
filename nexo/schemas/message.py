@@ -16,8 +16,11 @@ from datetime import datetime, timezone
 class AgentID(str, Enum):
     ORCHESTRATOR = "ORCHESTRATOR"
     ANALYST      = "ANALYST"
+    RESEARCHER   = "RESEARCHER"
     STRATEGIST   = "STRATEGIST"
     EXECUTOR     = "EXECUTOR"
+    QA           = "QA"
+    SECURITY     = "SECURITY"
     EVALUATOR    = "EVALUATOR"
     USER         = "USER"
     SYSTEM       = "SYSTEM"
@@ -35,9 +38,12 @@ class MessageStatus(str, Enum):
 class TaskPhase(str, Enum):
     PERCEPTION   = "PERCEPTION"    # Recepción del problema
     ANALYSIS     = "ANALYSIS"      # Interpretación por el Analista
+    RESEARCH     = "RESEARCH"      # Síntesis de datos y evidencias recibidas
     PLANNING     = "PLANNING"      # Generación de plan por el Estratega
     EXECUTION    = "EXECUTION"     # Ejecución por el Ejecutor
     EVALUATION   = "EVALUATION"    # Verificación por el Evaluador
+    QUALITY      = "QUALITY"       # Gate independiente de calidad
+    SECURITY     = "SECURITY"      # Revisión de permisos y operaciones
     CORRECTION   = "CORRECTION"    # Replanificación
     DELIVERY     = "DELIVERY"      # Entrega del resultado final
 

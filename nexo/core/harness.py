@@ -15,14 +15,16 @@ class HarnessBlocked(RuntimeError):
 class MissionHarness:
     """Cooperative mission deadline, emergency stop, task budget and audit trail."""
 
-    def __init__(self, session_id: str, timeout_seconds: float = 300, max_tasks: int = 20):
+    def __init__(self, session_id: str, timeout_seconds: float = 300, max_tasks: int = 20, max_llm_calls: int = 30):
         self.session_id = session_id
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.max_tasks = max(1, int(max_tasks))
+        self.max_llm_calls = max(1, int(max_llm_calls))
         self.started = time.monotonic()
         self.deadline = self.started + self.timeout_seconds
         self._events: list[dict[str, Any]] = []
         self._started_tasks = 0
+        self._llm_calls = 0
         self._lock = threading.Lock()
         self._state = "active"
 
@@ -36,6 +38,10 @@ class MissionHarness:
         return None
 
     def check_active(self) -> None:
+        with self._lock:
+            state = self._state
+        if state in {"llm_budget_exceeded", "task_budget_exceeded", "timed_out", "blocked"}:
+            raise HarnessBlocked(f"La misión está bloqueada por el Harness ({state})")
         stopped = self._emergency_stop()
         if stopped:
             self._state = "blocked"
@@ -75,6 +81,23 @@ class MissionHarness:
                      tool=tool, duration_ms=round(float(duration_ms), 2),
                      permission=skill_audit, error=error)
 
+    def begin_llm_call(self, agent: str, model: str) -> None:
+        self.check_active()
+        with self._lock:
+            over_budget = self._llm_calls >= self.max_llm_calls
+            if not over_budget:
+                self._llm_calls += 1
+        if over_budget:
+            self._state = "llm_budget_exceeded"
+            self._record("blocked", agent=agent, model=model, reason="Mission LLM call budget exceeded")
+            raise HarnessBlocked("Límite de inferencias LLM excedido")
+        self._record("llm_started", agent=agent, model=model)
+
+    def finish_llm_call(self, agent: str, model: str, duration_ms: float, telemetry: dict | None = None, error_type: str | None = None) -> None:
+        safe_telemetry = {key: telemetry.get(key) for key in ("prompt_eval_count", "eval_count", "total_duration") if telemetry and key in telemetry}
+        self._record("llm_completed" if error_type is None else "llm_failed", agent=agent, model=model,
+                     duration_ms=round(float(duration_ms), 2), telemetry=safe_telemetry, error_type=error_type)
+
     def _record(self, event: str, **fields) -> None:
         item = {"event": event, "elapsed_ms": round((time.monotonic() - self.started) * 1000, 2), **fields}
         with self._lock:
@@ -89,6 +112,8 @@ class MissionHarness:
             "elapsed_seconds": round(time.monotonic() - self.started, 2),
             "timeout_seconds": self.timeout_seconds,
             "task_budget": self.max_tasks,
+            "llm_calls": self._llm_calls,
+            "llm_call_budget": self.max_llm_calls,
             "tasks_started": self._started_tasks,
             "tasks_completed": sum(e["event"] == "completed" for e in events),
             "tasks_failed": sum(e["event"] == "failed" for e in events),

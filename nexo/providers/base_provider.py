@@ -288,6 +288,14 @@ def build_provider(agent_role: str, config: Optional[dict[str, Any]] = None) -> 
 
         provider = OllamaProvider(model=model, base_url=base_url, timeout=timeout, max_retries=retries)
         if not provider.is_available():
+            fallback_model = str(provider_cfg.get("fallback_model", "")).strip()
+            if fallback_model and fallback_model != model:
+                fallback = OllamaProvider(model=fallback_model, base_url=base_url,
+                                          timeout=timeout, max_retries=retries)
+                if fallback.is_available():
+                    logger.warning("Configured Ollama model unavailable for %s; using configured fallback %s",
+                                   agent_role, fallback_model)
+                    return fallback
             raise ConnectionError(
                 f"Ollama o el modelo '{model}' no está disponible en {base_url} para {agent_role}. "
                 "Iniciá Ollama o configurá explícitamente type='mock' solo para pruebas."

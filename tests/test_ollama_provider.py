@@ -6,7 +6,7 @@ Verifica:
 - Lógica de reintentos con backoff ante caídas temporales
 - Manejo de timeouts y errores de conexión
 - Extracción de telemetría de ejecución (tokens, duración)
-- Matching flexible de modelos y fallback automático a MockProvider
+- Matching flexible de modelos y fallback configurado explícitamente
 """
 
 import sys
@@ -140,6 +140,14 @@ class TestProviderFactory:
         cfg = {"EXECUTOR": {"type": "ollama", "model": "qwen2.5-coder:7b"}}
         with pytest.raises(ConnectionError, match="no está disponible"):
             build_provider("EXECUTOR", cfg)
+
+    @patch.object(OllamaProvider, "is_available", side_effect=[False, True])
+    def test_build_provider_uses_only_configured_installed_fallback(self, mock_avail):
+        cfg = {"EXECUTOR": {"type": "ollama", "model": "primary:7b",
+                            "fallback_model": "local-fallback:3b"}}
+        provider = build_provider("EXECUTOR", cfg)
+        assert provider.model == "local-fallback:3b"
+        assert mock_avail.call_count == 2
 
     def test_providers_share_keepalive_client_for_same_endpoint(self, monkeypatch):
         key = ("http://reuse-test.invalid:11434", 120)

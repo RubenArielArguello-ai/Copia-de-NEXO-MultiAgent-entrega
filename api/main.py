@@ -429,6 +429,11 @@ async def get_model_status():
             "model": model_name,
             "type": cfg.get("type", "mock"),
             "available_in_ollama": availability_cache[cache_key],
+            "fallback_model": cfg.get("fallback_model") or None,
+            "fallback_available": (
+                OllamaProvider.model_is_installed(installed_models_cache[cache_key[0]] or [], cfg["fallback_model"])
+                if cfg.get("fallback_model") else None
+            ),
         }
     return {
         "ollama_base_url": OLLAMA_BASE_URL,
@@ -481,20 +486,29 @@ async def get_agent_status(session_id: str | None = None):
     if session_id and not session:
         messages = MessageBus(session_id).get_session_messages(limit=500)
     agent_status = {}
-    for agent in (AgentID.ANALYST, AgentID.STRATEGIST, AgentID.EXECUTOR, AgentID.EVALUATOR):
+    provider_roles = {
+        AgentID.ANALYST: "ANALYST", AgentID.RESEARCHER: "RESEARCHER",
+        AgentID.STRATEGIST: "STRATEGIST", AgentID.EXECUTOR: "EXECUTOR",
+        AgentID.EVALUATOR: "EVALUATOR",
+    }
+    for agent in (AgentID.ANALYST, AgentID.RESEARCHER, AgentID.STRATEGIST,
+                  AgentID.EXECUTOR, AgentID.QA, AgentID.SECURITY, AgentID.EVALUATOR):
         status = "idle"
         for message in messages:
             if message.get("to_agent") == agent.value:
                 status = "working" if message.get("status") == "PENDING" else str(message.get("status", "idle")).lower()
             if message.get("from_agent") == agent.value:
                 status = str(message.get("status", "idle")).lower()
-        config = PROVIDER_CONFIG[agent.value]
+        config = PROVIDER_CONFIG.get(provider_roles.get(agent), {})
         model = models_used.get(agent.value)
+        internal = agent in {AgentID.QA, AgentID.SECURITY}
         agent_status[agent.value] = {
             "status": status,
-            "model": model or config["model"],
+            "model": ("deterministic-evidence-policy" if agent == AgentID.QA else
+                      "deterministic-least-privilege-policy" if agent == AgentID.SECURITY else
+                      model or config.get("model", "unconfigured")),
             "model_source": "session" if model else "current_config",
-            "provider": config["type"],
+            "provider": "internal" if internal else config.get("type", "unconfigured"),
         }
     saved_status = (persisted_session or {}).get("status", "idle")
     if saved_status in {"RUNNING", "REPLANNING"} and session_id not in _running_tasks:

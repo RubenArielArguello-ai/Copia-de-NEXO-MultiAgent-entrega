@@ -10,11 +10,40 @@ services:
       - OLLAMA_HOST=http://ollama-provider:11434
       - NEXO_DB_PATH=/data/nexo_data.db
       - NEXO_MEMORY_PATH=/data/nexo_data_db
+      - NEXO_MODEL_ANALYST=${NEXO_MODEL_ANALYST:-qwen2.5-coder:7b}
+      - NEXO_MODEL_STRATEGIST=${NEXO_MODEL_STRATEGIST:-qwen2.5-coder:7b}
+      - NEXO_MODEL_EXECUTOR=${NEXO_MODEL_EXECUTOR:-qwen2.5-coder:7b}
+      - NEXO_MODEL_EVALUATOR=${NEXO_MODEL_EVALUATOR:-qwen2.5-coder:7b}
+      - NEXO_MODEL_RESEARCHER=${NEXO_MODEL_RESEARCHER:-qwen2.5-coder:7b}
+      - NEXO_OLLAMA_FALLBACK_MODEL=${NEXO_OLLAMA_FALLBACK_MODEL:-}
+      - NEXO_SESSION_TIMEOUT=${NEXO_SESSION_TIMEOUT:-300}
+      - NEXO_MAX_TOOL_EXECUTIONS=${NEXO_MAX_TOOL_EXECUTIONS:-20}
+      - NEXO_MAX_LLM_CALLS=${NEXO_MAX_LLM_CALLS:-30}
+      - NEXO_EMBEDDING_MODEL=${NEXO_EMBEDDING_MODEL:-nomic-embed-text}
     volumes:
       - nexo-data:/data
     depends_on:
+      ollama-models:
+        condition: service_completed_successfully
+    networks:
+      - nexo-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  ollama-models:
+    image: ollama/ollama:latest
+    depends_on:
       ollama-provider:
         condition: service_healthy
+    environment:
+      NEXO_OLLAMA_MODELS: ${NEXO_OLLAMA_MODELS:-${NEXO_MODEL_ANALYST:-qwen2.5-coder:7b} ${NEXO_MODEL_STRATEGIST:-qwen2.5-coder:7b} ${NEXO_MODEL_EXECUTOR:-qwen2.5-coder:7b} ${NEXO_MODEL_EVALUATOR:-qwen2.5-coder:7b} ${NEXO_MODEL_RESEARCHER:-qwen2.5-coder:7b} ${NEXO_EMBEDDING_MODEL:-nomic-embed-text}}
+    volumes:
+      - ollama-data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["set -eu; seen=' '; for model in $${NEXO_OLLAMA_MODELS}; do case \"$$seen\" in *\" $$model \"*) continue ;; esac; ollama pull \"$$model\"; seen=\"$$seen$$model \"; done"]
     networks:
       - nexo-network
 

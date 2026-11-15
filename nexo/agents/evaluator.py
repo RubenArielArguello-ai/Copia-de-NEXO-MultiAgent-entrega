@@ -63,6 +63,8 @@ corrections_needed, summary y final_answer. Aprueba solo si hay evidencia sufici
     def process(self, msg: NexoMessage) -> NexoMessage:
         execution_results = msg.payload.get("execution_results", [])
         analysis = msg.payload.get("analysis", {})
+        quality_review = msg.payload.get("quality_review", {})
+        security_review = msg.payload.get("security_review", {})
         original_request = str(msg.context.get("original_request", msg.goal))
         file_evidence_matches = file_content_evidence_matches(original_request, execution_results)
         required_tools = {skill.tool_name for skill in SkillRegistry().select_all(original_request)}
@@ -73,13 +75,18 @@ corrections_needed, summary y final_answer. Aprueba solo si hay evidencia sufici
         report_output = report_result.get("raw_results", {})
         report_tools = {item.get("tool") for item in report_output.get("evidence", [])
                         if isinstance(item, dict) and item.get("success")}
-        verified = required_tools.issubset(successful) and file_evidence_matches is not False
+        verified = (required_tools.issubset(successful) and file_evidence_matches is not False
+                    and quality_review.get("passed") is True
+                    and security_review.get("passed") is True)
         if "report_generation" in required_tools:
             verified = verified and (required_tools - {"report_generation"}).issubset(report_tools)
         user_prompt = (
             f"OBJETIVO ORIGINAL:\n{original_request}\n\n"
             f"CRITERIOS DE ÉXITO:\n{json.dumps(analysis.get('success_criteria', []), ensure_ascii=False)}\n\n"
             f"PLAN:\n{json.dumps(msg.payload.get('plan', []), ensure_ascii=False)}\n\n"
+            f"REVISIÓN QA:\n{json.dumps(quality_review, ensure_ascii=False)}\n\n"
+            f"REVISIÓN SECURITY:\n{json.dumps(security_review, ensure_ascii=False)}\n\n"
+            f"SÍNTESIS DE INVESTIGACIÓN (no constituye evidencia):\n{json.dumps(msg.payload.get('research', {}), ensure_ascii=False)}\n\n"
             f"RESULTADOS Y EVIDENCIA:\n{json.dumps(execution_results, ensure_ascii=False)}\n\n"
             "Evalúa evidencia concreta contra cada criterio. Responde solo JSON válido."
         )
@@ -135,7 +142,19 @@ corrections_needed, summary y final_answer. Aprueba solo si hay evidencia sufici
 
         # Deterministic evidence gate for registered capabilities. LLM opinion
         # cannot approve a requested diagnostic whose tool evidence is absent.
-        if required_tools:
+        if security_review.get("passed") is not True:
+            verdict = "REJECTED"
+            evaluation["goal_achieved"] = False
+            evaluation["issues_found"] = list(evaluation.get("issues_found", [])) + [
+                "La revisión independiente de Security no verificó todos los permisos de ejecución"
+            ]
+        elif quality_review.get("passed") is not True:
+            verdict = "NEEDS_CORRECTION"
+            evaluation["goal_achieved"] = False
+            evaluation["issues_found"] = list(evaluation.get("issues_found", [])) + [
+                "La revisión independiente de QA encontró evidencia incompleta"
+            ]
+        elif required_tools:
             missing = sorted(required_tools - successful)
             if "report_generation" in required_tools:
                 missing.extend(sorted((required_tools - {"report_generation"}) - report_tools))

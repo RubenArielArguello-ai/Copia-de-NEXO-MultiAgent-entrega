@@ -34,3 +34,15 @@ def test_api_bearer_token_is_enforced(monkeypatch):
     assert client.get("/tools").status_code == 401
     response = client.get("/tools", headers={"Authorization": "Bearer test-only-token"})
     assert response.status_code == 200
+
+
+def test_agent_status_exposes_real_specialist_roles(monkeypatch):
+    monkeypatch.delenv("NEXO_API_TOKEN", raising=False)
+    client = TestClient(app)
+    response = client.get("/agents/status")
+    assert response.status_code == 200
+    roles = response.json()["agents"]
+    assert {"ORCHESTRATOR", "ANALYST", "RESEARCHER", "STRATEGIST", "EXECUTOR",
+            "QA", "SECURITY", "EVALUATOR"}.issubset(roles)
+    assert roles["QA"]["provider"] == "internal"
+    assert roles["SECURITY"]["provider"] == "internal"

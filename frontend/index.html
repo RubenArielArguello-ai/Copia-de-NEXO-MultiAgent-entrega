@@ -121,10 +121,15 @@
           </div>
           <div class="agent-status-dot idle" id="dot-ANALYST"></div>
         </div>
+        <div class="agent-card" id="agent-RESEARCHER" data-agent="RESEARCHER">
+          <div class="agent-avatar researcher">R</div><div class="agent-info"><div class="agent-name">Investigador</div>
+          <div class="agent-responsibility">Sintetiza fuentes observadas y brechas</div><div class="agent-model">Modelo: bajo demanda</div></div>
+          <div class="agent-status-dot idle" id="dot-RESEARCHER"></div>
+        </div>
         <div class="agent-card" id="agent-STRATEGIST" data-agent="STRATEGIST">
           <div class="agent-avatar strategist">S</div>
           <div class="agent-info">
-            <div class="agent-name">Estratega</div>
+            <div class="agent-name">Planner · Estratega</div>
             <div class="agent-responsibility">Descompone el objetivo en un plan</div>
             <div class="agent-model">Modelo: cargando…</div>
           </div>
@@ -133,7 +138,7 @@
         <div class="agent-card" id="agent-EXECUTOR" data-agent="EXECUTOR">
           <div class="agent-avatar executor">X</div>
           <div class="agent-info">
-            <div class="agent-name">Ejecutor</div>
+            <div class="agent-name">Developer · Ejecutor</div>
             <div class="agent-responsibility">Usa herramientas y aporta evidencia</div>
             <div class="agent-model">Modelo: cargando…</div>
           </div>
@@ -147,6 +152,16 @@
             <div class="agent-model">Modelo: cargando…</div>
           </div>
           <div class="agent-status-dot idle" id="dot-EVALUATOR"></div>
+        </div>
+        <div class="agent-card" id="agent-QA" data-agent="QA">
+          <div class="agent-avatar qa">Q</div><div class="agent-info"><div class="agent-name">QA</div>
+          <div class="agent-responsibility">Gate independiente de evidencia</div><div class="agent-model">Política determinista</div></div>
+          <div class="agent-status-dot idle" id="dot-QA"></div>
+        </div>
+        <div class="agent-card" id="agent-SECURITY" data-agent="SECURITY">
+          <div class="agent-avatar security">S</div><div class="agent-info"><div class="agent-name">Security</div>
+          <div class="agent-responsibility">Verifica Skills y mínimo privilegio</div><div class="agent-model">Política determinista</div></div>
+          <div class="agent-status-dot idle" id="dot-SECURITY"></div>
         </div>
       </div>
     </section>
@@ -169,10 +184,13 @@
     <section class="panel" id="flow-panel">
       <h2 class="panel-title">Flujo interagente</h2>
       <div class="agent-flow" id="agent-flow">
-        <span data-flow="ANALYST">Analista</span><i>→</i>
-        <span data-flow="STRATEGIST">Estratega</span><i>→</i>
-        <span data-flow="EXECUTOR">Ejecutor</span><i>→</i>
-        <span data-flow="EVALUATOR">Evaluador</span>
+        <span data-flow="ANALYST">Analyst</span><i>→</i>
+        <span data-flow="STRATEGIST">Planner</span><i>→</i>
+        <span data-flow="EXECUTOR">Developer</span><i>→</i>
+        <span data-flow="RESEARCHER">Researcher</span><i>→</i>
+        <span data-flow="QA">QA</span><i>→</i>
+        <span data-flow="SECURITY">Security</span><i>→</i>
+        <span data-flow="EVALUATOR">Evaluator</span>
       </div>
       <div id="flow-caption" class="muted-caption">Esperando una misión</div>
       <div id="current-mission" class="current-mission">Seleccioná una misión para ver su objetivo y progreso.</div>

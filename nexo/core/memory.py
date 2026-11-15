@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
+from nexo.config import MODEL_EMBEDDINGS
 
 logger = logging.getLogger(__name__)
 DB_PATH = os.getenv("NEXO_MEMORY_PATH", str(Path(__file__).resolve().parents[2] / "nexo_data_db"))
@@ -12,7 +13,7 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
 def obtener_embeddings():
     # Usamos un modelo local de Ollama para convertir texto en vectores
     return OllamaEmbeddings(
-        model="nomic-embed-text",
+        model=MODEL_EMBEDDINGS,
         base_url=OLLAMA_HOST,
         client_kwargs={"timeout": 30},
     )

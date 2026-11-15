@@ -1,0 +1,1 @@
+Evidencia de ejecucion real de NEXO con Ollama qwen2.5-coder:7b

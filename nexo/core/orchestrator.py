@@ -29,6 +29,9 @@ from nexo.agents.analyst    import AnalystAgent
 from nexo.agents.strategist import StrategistAgent
 from nexo.agents.executor   import ExecutorAgent
 from nexo.agents.evaluator  import EvaluatorAgent
+from nexo.agents.researcher import ResearcherAgent
+from nexo.agents.quality import QAAgent
+from nexo.agents.security import SecurityAgent
 from nexo.tools.coherence_monitor import CoherenceMonitor
 from nexo.skills import SkillRegistry
 from nexo.core.harness import MissionHarness
@@ -80,6 +83,7 @@ class Orchestrator:
             session_id,
             timeout_seconds=ORCHESTRATOR_CONFIG["timeout_seconds"],
             max_tasks=ORCHESTRATOR_CONFIG["max_tool_executions"],
+            max_llm_calls=ORCHESTRATOR_CONFIG["max_llm_calls"],
         )
         session.agent_results["harness"] = self.harness.snapshot()
 
@@ -97,6 +101,8 @@ class Orchestrator:
             # Construir agentes con sus proveedores. Una configuración real de
             # Ollama que no esté disponible falla aquí; no se sustituye por mock.
             agents = self._build_agents(bus)
+            for agent in agents.values():
+                agent.harness = self.harness
             session.agent_results["mock_mode"] = all(
                 isinstance(agent.provider, MockProvider) for agent in agents.values()
             )
@@ -107,6 +113,11 @@ class Orchestrator:
                     or f"mock-{agent.agent_id.value.lower()}"
                 )
                 for agent in agents.values()
+                if agent.agent_id not in {AgentID.QA, AgentID.SECURITY}
+            }
+            session.agent_results["internal_agents"] = {
+                "QA": "deterministic-evidence-policy",
+                "SECURITY": "deterministic-least-privilege-policy",
             }
             session.agent_results["memory_context"] = self._load_memory_context(session, agents)
 
@@ -146,6 +157,32 @@ class Orchestrator:
 
                 # ── FASE 3: EJECUCIÓN ─────────────────────────────────
                 execution_results = self._phase_execution(session, bus, agents, plan)
+
+                # El Investigador se usa cuando hay una misión compuesta y
+                # sintetiza solo resultados observados, nunca como evidencia.
+                selected_skills = self.skill_registry.select_all(session.original_request)
+                if len(selected_skills) > 1 or str(analysis.get("estimated_complexity", "")).casefold() == "compleja":
+                    research = self._run_aux_agent(
+                        session, bus, agents["researcher"], "researcher",
+                        TaskPhase.RESEARCH,
+                        {"analysis": analysis, "execution_results": execution_results},
+                    )
+                    if research:
+                        session.agent_results["research"] = research.get("research", {})
+
+                # QA y Security son gates independientes previos al Evaluador.
+                quality = self._run_aux_agent(
+                    session, bus, agents["qa"], "qa", TaskPhase.QUALITY,
+                    {"plan": plan, "execution_results": execution_results},
+                )
+                if quality:
+                    session.agent_results["quality_review"] = quality.get("quality_review", {})
+                security = self._run_aux_agent(
+                    session, bus, agents["security"], "security", TaskPhase.SECURITY,
+                    {"execution_results": execution_results},
+                )
+                if security:
+                    session.agent_results["security_review"] = security.get("security_review", {})
 
                 # ── FASE 4: EVALUACIÓN ────────────────────────────────
                 evaluation = self._phase_evaluation(
@@ -216,6 +253,11 @@ class Orchestrator:
             self.harness.finish("failed" if session.status == SessionStatus.FAILED else "completed")
         harness_summary = self.harness.snapshot() if self.harness else {}
         session.agent_results["harness"] = harness_summary
+        session.agent_results["llm_usage"] = {
+            agent.agent_id.value: dict(agent.llm_usage)
+            for agent in agents.values()
+            if getattr(agent, "llm_usage", {}).get("calls", 0)
+        }
         session.metrics.update({
             "end_time":       time.time(),
             "elapsed_seconds": round(elapsed, 2),
@@ -365,8 +407,8 @@ class Orchestrator:
             request_text = session.original_request
             if any(term in request_text.lower() for term in ("archivo", "file")) and any(term in request_text.lower() for term in ("crea", "crear", "escrib", "guarda", "create", "write")) and any(term in request_text.lower() for term in ("lee", "leer", "léelo", "leelo", "read")):
                 proposed_tasks = [
-                    {"id": "T1", "task": f"Crear archivo solicitado. Objetivo completo: {request_text}", "agent": "EXECUTOR", "depends_on": []},
-                    {"id": "T2", "task": f"Leer el archivo creado y verificar su contenido. Objetivo completo: {request_text}", "agent": "EXECUTOR", "depends_on": ["T1"]},
+                    {"id": "T1", "task": f"Crear archivo solicitado. Objetivo completo: {request_text}", "agent": "EXECUTOR", "depends_on": [], "tool": "file_write"},
+                    {"id": "T2", "task": f"Leer el archivo creado y verificar su contenido. Objetivo completo: {request_text}", "agent": "EXECUTOR", "depends_on": ["T1"], "tool": "file_read"},
                 ]
 
             # El orquestador ya tiene una fase de evaluación. Solo se delegan al
@@ -388,7 +430,9 @@ class Orchestrator:
                 if str(task.get("agent", "EXECUTOR")).upper() != "EXECUTOR":
                     excluded.append({"id": task_id, "task": task.get("task", ""), "reason": "la evaluación se realiza en la fase del Evaluador"})
                     continue
-                tool_name = agents["executor"].resolve_tool_for_task(task.get("task", ""))
+                # Respeta la herramienta pre-asignada (casos compuestos archivo write→read)
+                # y solo resuelve por LLM cuando no está declarada.
+                tool_name = task.get("tool") or agents["executor"].resolve_tool_for_task(task.get("task", ""))
                 if tool_name is None:
                     excluded.append({"id": task_id, "task": task.get("task", ""), "reason": "no corresponde a una herramienta ejecutable del pipeline"})
                     continue
@@ -562,6 +606,9 @@ class Orchestrator:
                 "analysis":          analysis,
                 "plan":              plan,
                 "execution_results": execution_results,
+                "research": session.agent_results.get("research", {}),
+                "quality_review": session.agent_results.get("quality_review", {}),
+                "security_review": session.agent_results.get("security_review", {}),
             },
             context={
                 "session_id":    session.session_id,
@@ -582,6 +629,31 @@ class Orchestrator:
             return evaluation
 
         return {"verdict": "REJECTED", "final_answer": "", "corrections_needed": []}
+
+    def _run_aux_agent(self, session, bus, agent, key: str, phase: TaskPhase, payload: dict) -> dict:
+        """Run a specialist through the same persisted Orchestrator message path."""
+        message = NexoMessage(
+            from_agent=AgentID.ORCHESTRATOR, to_agent=agent.agent_id,
+            task_id=session.session_id, goal=session.original_request,
+            phase=phase, payload=payload,
+            context={"session_id": session.session_id,
+                     "original_request": session.original_request,
+                     "iteration": session.iteration},
+            status=MessageStatus.PENDING, iteration=session.iteration,
+        )
+        bus.publish(message)
+        session.add_message(message)
+        response = agent.run()
+        if not response:
+            session.error_log.append(f"El agente {key} no produjo respuesta")
+            return {}
+        session.add_message(response)
+        result = response.payload
+        session.agent_results.setdefault("specialist_runs", []).append({
+            "agent": agent.agent_id.value, "phase": phase.value,
+            "status": response.status.value, "iteration": session.iteration,
+        })
+        return result
 
     def _run_coherence_check(self, session: SessionState, bus: MessageBus) -> dict:
         """
@@ -620,11 +692,17 @@ class Orchestrator:
 
     def _build_agents(self, bus: MessageBus) -> dict:
         """Construye los agentes con sus proveedores configurados."""
+        def provider(role: str, fallback: str):
+            selected = role if role in self.provider_config else fallback
+            return build_provider(selected, self.provider_config)
         return {
             "analyst":    AnalystAgent(build_provider("ANALYST", self.provider_config), bus),
             "strategist": StrategistAgent(build_provider("STRATEGIST", self.provider_config), bus),
             "executor":   ExecutorAgent(build_provider("EXECUTOR", self.provider_config), bus, self.skill_registry),
             "evaluator":  EvaluatorAgent(build_provider("EVALUATOR", self.provider_config), bus),
+            "researcher": ResearcherAgent(provider("RESEARCHER", "ANALYST"), bus),
+            "qa": QAAgent(provider("QA", "EVALUATOR"), bus),
+            "security": SecurityAgent(provider("SECURITY", "EVALUATOR"), bus),
         }
 
     def _load_memory_context(self, session: SessionState, agents: dict) -> str:

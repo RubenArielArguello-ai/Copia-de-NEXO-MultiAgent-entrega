@@ -1,17 +1,17 @@
 /* ══════════════════════════════════════════════════════════════
    NEXO — Design System
-   Dark glassmorphism theme con gradientes violeta/cyan
+   Dark operations console with amber/orange security accents
 ══════════════════════════════════════════════════════════════ */
 
 /* ── Variables ─────────────────────────────────────────────── */
 :root {
-  --bg-base:        #0a0b14;
-  --bg-surface:     #0f1020;
-  --bg-elevated:    #151726;
-  --bg-glass:       rgba(21, 23, 38, 0.7);
+  --bg-base:        #080807;
+  --bg-surface:     #11110f;
+  --bg-elevated:    #1b1a16;
+  --bg-glass:       rgba(20, 19, 15, 0.88);
 
-  --accent-violet:  #7c3aed;
-  --accent-cyan:    #06b6d4;
+  --accent-violet:  #f59e0b;
+  --accent-cyan:    #f97316;
   --accent-emerald: #10b981;
   --accent-amber:   #f59e0b;
   --accent-rose:    #f43f5e;
@@ -21,7 +21,7 @@
   --text-muted:     #475569;
 
   --border-subtle:  rgba(148, 163, 184, 0.08);
-  --border-glass:   rgba(124, 58, 237, 0.2);
+  --border-glass:   rgba(245, 158, 11, 0.22);
 
   --radius-sm:  6px;
   --radius-md:  12px;
@@ -31,10 +31,10 @@
   --font-mono: 'JetBrains Mono', monospace;
 
   /* Agent colors */
-  --color-orchestrator: #7c3aed;
-  --color-analyst:      #06b6d4;
-  --color-strategist:   #10b981;
-  --color-executor:     #f59e0b;
+  --color-orchestrator: #f97316;
+  --color-analyst:      #facc15;
+  --color-strategist:   #f59e0b;
+  --color-executor:     #fb923c;
   --color-evaluator:    #f43f5e;
 }
 
@@ -50,8 +50,8 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   background-image:
-    radial-gradient(ellipse 60% 40% at 10% 0%, rgba(124,58,237,0.12) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 35% at 90% 100%, rgba(6,182,212,0.08) 0%, transparent 60%);
+    radial-gradient(ellipse 60% 40% at 10% 0%, rgba(245,158,11,0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 35% at 90% 100%, rgba(249,115,22,0.07) 0%, transparent 60%);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -85,7 +85,7 @@ body {
 .brand-name {
   font-size: 1.5rem;
   font-weight: 700;
-  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+  background: linear-gradient(135deg, #facc15, #f97316);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -347,9 +347,12 @@ body {
 
 .agent-card[data-agent="ORCHESTRATOR"]::before { background: var(--color-orchestrator); }
 .agent-card[data-agent="ANALYST"]::before      { background: var(--color-analyst); }
+.agent-card[data-agent="RESEARCHER"]::before   { background: #fde047; }
 .agent-card[data-agent="STRATEGIST"]::before   { background: var(--color-strategist); }
 .agent-card[data-agent="EXECUTOR"]::before     { background: var(--color-executor); }
 .agent-card[data-agent="EVALUATOR"]::before    { background: var(--color-evaluator); }
+.agent-card[data-agent="QA"]::before           { background: #fb923c; }
+.agent-card[data-agent="SECURITY"]::before      { background: #f43f5e; }
 
 .agent-card.active::before { opacity: 1; }
 .agent-card.active { background: rgba(255,255,255,0.03); }
@@ -365,9 +368,12 @@ body {
 
 .agent-avatar.orchestrator { background: rgba(124,58,237,0.2);  color: var(--color-orchestrator); }
 .agent-avatar.analyst      { background: rgba(6,182,212,0.2);   color: var(--color-analyst); }
+.agent-avatar.researcher   { background: rgba(250,204,21,0.18); color: #fde047; }
 .agent-avatar.strategist   { background: rgba(16,185,129,0.2);  color: var(--color-strategist); }
 .agent-avatar.executor     { background: rgba(245,158,11,0.2);  color: var(--color-executor); }
 .agent-avatar.evaluator    { background: rgba(244,63,94,0.2);   color: var(--color-evaluator); }
+.agent-avatar.qa           { background: rgba(251,146,60,0.18); color: #fb923c; }
+.agent-avatar.security    { background: rgba(244,63,94,0.18); color: #f43f5e; }
 
 .agent-name  { font-size: 0.88rem; font-weight: 600; }
 .agent-model { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono); }

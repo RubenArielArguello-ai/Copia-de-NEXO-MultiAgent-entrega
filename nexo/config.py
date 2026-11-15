@@ -49,6 +49,7 @@ MODEL_STRATEGIST: str   = validate_env_var("NEXO_MODEL_STRATEGIST", "qwen2.5-cod
 MODEL_EXECUTOR: str     = validate_env_var("NEXO_MODEL_EXECUTOR", "qwen2.5-coder:7b")
 MODEL_EVALUATOR: str    = validate_env_var("NEXO_MODEL_EVALUATOR", "qwen2.5-coder:7b")
 MODEL_ORCHESTRATOR: str = validate_env_var("NEXO_MODEL_ORCHESTRATOR", "qwen2.5-coder:7b")
+MODEL_EMBEDDINGS: str = validate_env_var("NEXO_EMBEDDING_MODEL", "nomic-embed-text")
 
 PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
     "ANALYST": {
@@ -88,6 +89,16 @@ PROVIDER_CONFIG: dict[str, dict[str, Any]] = {
     },
 }
 
+# Researcher usa Ollama local y por defecto hereda el modelo del Analyst.
+PROVIDER_CONFIG["RESEARCHER"] = {
+    **PROVIDER_CONFIG["ANALYST"],
+    "model": validate_env_var("NEXO_MODEL_RESEARCHER", MODEL_ANALYST),
+}
+OLLAMA_FALLBACK_MODEL = validate_env_var("NEXO_OLLAMA_FALLBACK_MODEL", "")
+if OLLAMA_FALLBACK_MODEL:
+    for _role_config in PROVIDER_CONFIG.values():
+        _role_config["fallback_model"] = OLLAMA_FALLBACK_MODEL
+
 # ─────────────────────────────────────────────
 #  Parámetros del orquestador
 # ─────────────────────────────────────────────
@@ -97,6 +108,7 @@ ORCHESTRATOR_CONFIG = {
     "coherence_threshold":    validate_env_var("NEXO_COHERENCE_THRESHOLD", 0.6),
     "timeout_seconds":        validate_env_var("NEXO_SESSION_TIMEOUT", 300),
     "max_tool_executions":    validate_env_var("NEXO_MAX_TOOL_EXECUTIONS", 20),
+    "max_llm_calls":          validate_env_var("NEXO_MAX_LLM_CALLS", 30),
 }
 
 # ─────────────────────────────────────────────

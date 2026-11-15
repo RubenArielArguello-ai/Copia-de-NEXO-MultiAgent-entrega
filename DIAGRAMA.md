@@ -8,11 +8,15 @@ sequenceDiagram
   participant UI as Dashboard
   participant API as FastAPI
   participant O as Orquestador
-  participant A as Analista
-  participant S as Estratega
-  participant X as Ejecutor
+  participant A as Analyst
+  participant S as Planner
+  participant X as Developer
   participant T as Herramienta
+  participant R as Researcher
+  participant Q as QA
+  participant SC as Security
   participant E as Evaluador
+  participant H as Harness
   participant DB as SQLite / Chroma
   U->>UI: objetivo
   UI->>API: POST /sessions
@@ -25,6 +29,14 @@ sequenceDiagram
   X->>T: acción real
   T-->>X: salida observada
   X-->>O: evidencia
+  opt misión compuesta
+    O->>R: evidencia observada y objetivo
+    R-->>O: síntesis con IDs de tareas
+  end
+  O->>Q: plan y resultados
+  Q-->>O: checks de calidad
+  O->>SC: auditoría de Skills/permisos
+  SC-->>O: autorización o bloqueo
   O->>E: objetivo + criterios + evidencia
   alt aprobado
     E-->>O: APPROVED
@@ -33,6 +45,7 @@ sequenceDiagram
     E-->>O: REJECTED / NEEDS_CORRECTION
     O->>S: reintento limitado
   end
+  H-->>O: límites, telemetría y auditoría
 ```
 
 ## Datos

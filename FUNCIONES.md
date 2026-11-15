@@ -14,6 +14,11 @@
 | `ExecutorAgent._try_tool` | `nexo/agents/executor.py` | Selecciona y llama la herramienta autorizada. |
 | `build_provider` | `nexo/providers/base_provider.py` | Construye proveedor Ollama o mock explícito. |
 | `MessageBus.record_tool_execution` | `nexo/core/message_bus.py` | Persiste auditoría de herramienta en SQLite. |
+| `ResearcherAgent.process` | `nexo/agents/researcher.py` | En misiones compuestas sintetiza hallazgos observados; no crea evidencia y conserva referencias a tareas. |
+| `QAAgent.process` | `nexo/agents/quality.py` | Verifica cada tarea y evidencia del informe antes de evaluar. |
+| `SecurityAgent.process` | `nexo/agents/security.py` | Bloquea resultados sin correspondencia autorizada entre tool, Skill y permiso. |
+| `MissionHarness` | `nexo/core/harness.py` | Aplica deadline, presupuesto de tareas e inferencias, parada de emergencia y auditoría. |
+| `BaseAgent.call_llm` | `nexo/agents/base_agent.py` | Registra llamadas, duración y contadores de tokens del proveedor en Harness. |
 | `guardar_en_memoria` / `buscar_en_memoria` | `nexo/core/memory.py` | Escribe/consulta recuerdos vectoriales en Chroma. |
 | `api(path, ...)` | `app.py` | Conecta Streamlit a los mismos endpoints FastAPI. |
 

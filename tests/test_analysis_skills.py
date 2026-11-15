@@ -68,14 +68,21 @@ def test_evaluator_approves_only_complete_registered_skill_evidence():
     request = "Revisa recursos del sistema y conectividad, y genera un informe"
     results = []
     for tool in ("system_diagnostic", "network_diagnostic"):
+        from nexo.skills import SkillRegistry
+        skill = SkillRegistry().by_tool(tool)
         results.append({"task_id": tool, "result": {"tool_used": tool, "tool_success": True,
-                        "can_complete": True, "raw_results": {"observed": True}}})
+                        "can_complete": True, "raw_results": {"observed": True,
+                        "skill_audit": {"skill": skill.name, "permission": skill.permission,
+                                        "agent": "EXECUTOR", "authorized": True}}}})
     report = ReportGenerationTool().safe_execute({"request": request, "prior_results": results})["output"]
     results.append({"task_id": "report", "result": {"tool_used": "report_generation", "tool_success": True,
-                    "can_complete": True, "raw_results": report}})
+                    "can_complete": True, "raw_results": {**report,
+                    "skill_audit": {"skill": "report_generation", "permission": "read",
+                                    "agent": "EXECUTOR", "authorized": True}}}})
     message = NexoMessage(from_agent=AgentID.ORCHESTRATOR, to_agent=AgentID.EVALUATOR,
         task_id="unit", goal=request, phase=TaskPhase.EVALUATION,
-        payload={"execution_results": results, "analysis": {}},
+        payload={"execution_results": results, "analysis": {},
+                 "quality_review": {"passed": True}, "security_review": {"passed": True}},
         context={"original_request": request}, status=MessageStatus.PENDING)
     result = EvaluatorAgent(MockProvider("EVALUATOR"), None).process(message)
     assert result.payload["evaluation"]["verdict"] == "APPROVED"
@@ -101,3 +108,41 @@ def test_registry_selects_composite_mission_skills():
     assert {skill.tool_name for skill in skills} >= {"system_diagnostic", "network_diagnostic", "report_generation"}
     registry = SkillRegistry()
     assert registry.select("report_generation: inspect sistema y red").name == "report_generation"
+
+
+def test_security_agent_fails_closed_without_authorized_skill_audit():
+    from nexo.agents.security import SecurityAgent
+    message = NexoMessage(from_agent=AgentID.ORCHESTRATOR, to_agent=AgentID.SECURITY,
+        task_id="security", goal="diagnóstico", phase=TaskPhase.SECURITY,
+        payload={"execution_results": [{"task_id": "T1", "result": {
+            "tool_used": "system_diagnostic", "tool_success": True,
+            "raw_results": {"cpu": 1}}}]}, status=MessageStatus.PENDING)
+    reviewed = SecurityAgent(MockProvider("SECURITY"), None).process(message)
+    assert reviewed.payload["security_review"]["passed"] is False
+
+
+def test_security_agent_accepts_only_matching_skill_permissions():
+    from nexo.agents.security import SecurityAgent
+    from nexo.skills import SkillRegistry
+    skill = SkillRegistry().by_tool("system_diagnostic")
+    message = NexoMessage(from_agent=AgentID.ORCHESTRATOR, to_agent=AgentID.SECURITY,
+        task_id="security-ok", goal="diagnóstico", phase=TaskPhase.SECURITY,
+        payload={"execution_results": [{"task_id": "T1", "result": {
+            "tool_used": "system_diagnostic", "tool_success": True,
+            "raw_results": {"cpu": 1, "skill_audit": {"skill": skill.name,
+                "permission": skill.permission, "agent": "EXECUTOR", "authorized": True}}}}]},
+        status=MessageStatus.PENDING)
+    reviewed = SecurityAgent(MockProvider("SECURITY"), None).process(message)
+    assert reviewed.payload["security_review"]["passed"] is True
+
+
+def test_qa_agent_requires_nonempty_observed_evidence():
+    from nexo.agents.quality import QAAgent
+    message = NexoMessage(from_agent=AgentID.ORCHESTRATOR, to_agent=AgentID.QA,
+        task_id="qa", goal="diagnóstico", phase=TaskPhase.QUALITY,
+        payload={"plan": [{"id": "T1", "tool": "system_diagnostic"}],
+                 "execution_results": [{"task_id": "T1", "result": {
+                     "tool_success": True, "can_complete": True, "raw_results": {}}}]},
+        status=MessageStatus.PENDING)
+    reviewed = QAAgent(MockProvider("QA"), None).process(message)
+    assert reviewed.payload["quality_review"]["passed"] is False

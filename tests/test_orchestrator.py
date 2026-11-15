@@ -132,6 +132,26 @@ class TestOrchestrator:
         assert "elapsed_seconds" in metrics
         assert metrics["elapsed_seconds"] >= 0
 
+    @patch("nexo.core.orchestrator.build_provider")
+    def test_composite_mission_runs_research_qa_security_and_evaluator(self, mock_build_provider):
+        mock_build_provider.side_effect = lambda role, cfg: MockProvider(role)
+        with patch("nexo.tools.system_tool.SystemDiagnosticTool.execute", return_value={
+            "output": {"memory": {"available_gb": 4.0}, "disk": {"used_percent": 80}}, "success": True,
+        }), patch("nexo.tools.diagnostic_tool.NetworkDiagnosticTool.execute", return_value={
+            "output": {"status": "FULLY_CONNECTED", "latency_ms": 12}, "success": True,
+        }):
+            session = self.state_manager.create_session(
+                "Analiza los recursos del sistema y la conectividad, y genera un informe con evidencias"
+            )
+            result = self._get_orchestrator_with_mock().run(session.session_id)
+
+        senders = {message["from_agent"] for message in result["messages"]}
+        assert {"ANALYST", "STRATEGIST", "EXECUTOR", "RESEARCHER", "QA", "SECURITY", "EVALUATOR"}.issubset(senders)
+        assert result["agent_results"]["quality_review"]["passed"] is True
+        assert result["agent_results"]["security_review"]["passed"] is True
+        assert result["agent_results"]["harness"]["llm_calls"] > 0
+        assert result["agent_results"]["research"]["evidence_count"] >= 2
+
     def test_invalid_session_raises(self):
         """Intentar ejecutar una sesión inexistente debe lanzar ValueError."""
         orch = self._get_orchestrator_with_mock()

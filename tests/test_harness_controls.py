@@ -44,6 +44,20 @@ def test_harness_deadline_blocks_next_task():
         raise AssertionError("expired deadline should block a mission")
 
 
+def test_harness_enforces_llm_call_budget():
+    harness = MissionHarness("llm-budget", max_llm_calls=1)
+    harness.begin_llm_call("ANALYST", "local-model")
+    harness.finish_llm_call("ANALYST", "local-model", 3, telemetry={"eval_count": 2})
+    try:
+        harness.begin_llm_call("STRATEGIST", "local-model")
+    except HarnessBlocked:
+        pass
+    else:
+        raise AssertionError("LLM call budget should block additional inference")
+    assert harness.snapshot()["llm_calls"] == 1
+    assert harness.snapshot()["state"] == "llm_budget_exceeded"
+
+
 def test_timed_out_tool_returns_without_waiting_for_daemon_worker():
     class SlowTool(BaseTool):
         timeout_seconds = 0.02

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
@@ -36,6 +37,8 @@ class BaseAgent(ABC):
         self.provider = provider
         self.bus      = bus
         self._log     = logging.getLogger(f"nexo.agent.{self.agent_id.value.lower()}")
+        self.harness = None
+        self.llm_usage = {"calls": 0, "duration_ms": 0.0, "prompt_tokens": 0, "completion_tokens": 0}
 
     @property
     @abstractmethod
@@ -52,11 +55,30 @@ class BaseAgent(ABC):
     def call_llm(self, user_prompt: str, **kwargs) -> str:
         """Llama al proveedor LLM con el system prompt del agente."""
         self._log.info("Calling LLM for %s", self.agent_id.value)
-        return self.provider.generate(
-            system_prompt=self.system_prompt,
-            user_prompt=user_prompt,
-            **kwargs,
-        )
+        model = str(getattr(self.provider, "model", f"{type(self.provider).__name__}"))
+        if self.harness:
+            self.harness.begin_llm_call(self.agent_id.value, model)
+        started = time.monotonic()
+        try:
+            result = self.provider.generate(
+                system_prompt=self.system_prompt,
+                user_prompt=user_prompt,
+                **kwargs,
+            )
+        except Exception as exc:
+            if self.harness:
+                self.harness.finish_llm_call(self.agent_id.value, model,
+                    (time.monotonic() - started) * 1000, error_type=type(exc).__name__)
+            raise
+        duration = (time.monotonic() - started) * 1000
+        telemetry = getattr(self.provider, "last_telemetry", {})
+        self.llm_usage["calls"] += 1
+        self.llm_usage["duration_ms"] += duration
+        self.llm_usage["prompt_tokens"] += int(telemetry.get("prompt_eval_count", 0) or 0)
+        self.llm_usage["completion_tokens"] += int(telemetry.get("eval_count", 0) or 0)
+        if self.harness:
+            self.harness.finish_llm_call(self.agent_id.value, model, duration, telemetry=telemetry)
+        return result
 
     def call_llm_json(self, user_prompt: str, max_attempts: int = 2) -> dict[str, Any]:
         """Solicita JSON y reintenta una vez con instrucciones de reparación si el parseo falla."""

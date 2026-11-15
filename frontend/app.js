@@ -294,7 +294,7 @@ function updateUI(session, messages, coherenceEvents = [], toolExecutions = [], 
   renderEvaluation(session.agent_results?.evaluation, session);
 }
 
-function renderHarness(harness) {
+function renderHarness(harness, results = {}) {
   const state = document.getElementById('harness-state');
   const summary = document.getElementById('harness-summary');
   const events = document.getElementById('harness-events');
@@ -306,7 +306,13 @@ function renderHarness(harness) {
     return;
   }
   state.textContent = String(harness.state || 'unknown').toUpperCase();
-  summary.textContent = `Tareas iniciadas: ${harness.tasks_started ?? 0}/${harness.task_budget ?? '—'} · completas: ${harness.tasks_completed ?? 0} · fallidas: ${harness.tasks_failed ?? 0} · bloqueadas: ${harness.blocked_operations ?? 0} · tiempo: ${harness.elapsed_seconds ?? '—'}s / ${harness.timeout_seconds ?? '—'}s`;
+  const usage = Object.values(results.llm_usage || {}).reduce((total, item) => ({
+    calls: total.calls + Number(item.calls || 0),
+    tokens: total.tokens + Number(item.prompt_tokens || 0) + Number(item.completion_tokens || 0),
+  }), { calls: 0, tokens: 0 });
+  const quality = results.quality_review?.passed === true ? 'QA aprobado' : results.quality_review ? 'QA requiere corrección' : 'QA pendiente';
+  const security = results.security_review?.passed === true ? 'Security aprobado' : results.security_review ? 'Security bloqueó' : 'Security pendiente';
+  summary.textContent = `Tareas: ${harness.tasks_started ?? 0}/${harness.task_budget ?? '—'} · LLM: ${harness.llm_calls ?? 0}/${harness.llm_call_budget ?? '—'} (${usage.tokens} tokens, ${usage.calls} llamadas) · ${quality} · ${security} · completas: ${harness.tasks_completed ?? 0} · fallidas: ${harness.tasks_failed ?? 0} · bloqueadas: ${harness.blocked_operations ?? 0} · tiempo: ${harness.elapsed_seconds ?? '—'}s / ${harness.timeout_seconds ?? '—'}s`;
   events.replaceChildren();
   (Array.isArray(harness.events) ? harness.events.slice(-12) : []).forEach((event) => {
     const row = document.createElement('article');
@@ -393,7 +399,7 @@ function updateAgentStates(agentStates, messages) {
     coordinator.className = `coordinator-indicator ${coordinatorState === 'replanning' ? 'running' : coordinatorState}`;
   coordinator.innerHTML = `<i class="status-dot"></i> Orquestador · ${coordinatorState === 'running' || coordinatorState === 'replanning' ? 'coordinando' : coordinatorState === 'completed' ? 'finalizado' : coordinatorState === 'failed' ? 'con error' : 'esperando'}`;
   }
-  const roles = ['ANALYST', 'STRATEGIST', 'EXECUTOR', 'EVALUATOR'];
+  const roles = ['ANALYST', 'STRATEGIST', 'EXECUTOR', 'RESEARCHER', 'QA', 'SECURITY', 'EVALUATOR'];
   roles.forEach((role) => document.querySelector(`[data-flow="${role}"]`)?.classList.remove('active'));
   const last = messages[messages.length - 1];
   const activeRole = last?.to_agent && roles.includes(last.to_agent) ? last.to_agent : last?.from_agent;
