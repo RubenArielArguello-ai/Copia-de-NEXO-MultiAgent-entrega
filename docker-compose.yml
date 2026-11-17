@@ -1,11 +1,31 @@
 services:
+  dashboard:
+    build: .
+    image: nexo/orquestador:latest
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - NEXO_ENV=development
+      - OLLAMA_HOST=http://ollama-provider:11434
+    volumes:
+      - nexo-data:/data
+    depends_on:
+      ollama-models:
+        condition: service_completed_successfully
+    networks:
+      - nexo-network
+    ports:
+      - "127.0.0.1:3002:8000"
+    healthcheck:
+      test: ["CMD","python","-c","import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
   orquestador:
     build: .
     image: nexo/orquestador:latest
-    ports:
-      - "127.0.0.1:8000:8000"
     environment:
-      - NEXO_ENV=production
+      - NEXO_ENV=development
       - NEXO_API_TOKEN=${NEXO_API_TOKEN:-}
       - OLLAMA_HOST=http://ollama-provider:11434
       - NEXO_DB_PATH=/data/nexo_data.db
@@ -28,10 +48,21 @@ services:
     networks:
       - nexo-network
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 3
+
+  agent-canvas:
+    image: ghcr.io/openhands/agent-canvas:latest
+    ports:
+      - "127.0.0.1:3001:8000"
+    environment:
+      - OLLAMA_HOST=http://ollama-provider:11434
+    depends_on:
+      - ollama-provider
+    networks:
+      - nexo-network
 
   ollama-models:
     image: ollama/ollama:latest
@@ -39,11 +70,12 @@ services:
       ollama-provider:
         condition: service_healthy
     environment:
-      NEXO_OLLAMA_MODELS: ${NEXO_OLLAMA_MODELS:-${NEXO_MODEL_ANALYST:-qwen2.5-coder:7b} ${NEXO_MODEL_STRATEGIST:-qwen2.5-coder:7b} ${NEXO_MODEL_EXECUTOR:-qwen2.5-coder:7b} ${NEXO_MODEL_EVALUATOR:-qwen2.5-coder:7b} ${NEXO_MODEL_RESEARCHER:-qwen2.5-coder:7b} ${NEXO_EMBEDDING_MODEL:-nomic-embed-text}}
+      - NEXO_OLLAMA_MODELS=${NEXO_OLLAMA_MODELS:-${NEXO_MODEL_ANALYST:-qwen2.5-coder:7b} ${NEXO_MODEL_STRATEGIST:-qwen2.5-coder:7b} ${NEXO_MODEL_EXECUTOR:-qwen2.5-coder:7b} ${NEXO_MODEL_EVALUATOR:-qwen2.5-coder:7b} ${NEXO_MODEL_RESEARCHER:-qwen2.5-coder:7b} ${NEXO_EMBEDDING_MODEL:-nomic-embed-text}}
+      - OLLAMA_HOST=http://ollama-provider:11434
     volumes:
       - ollama-data:/root/.ollama
     entrypoint: ["/bin/sh", "-c"]
-    command: ["set -eu; seen=' '; for model in $${NEXO_OLLAMA_MODELS}; do case \"$$seen\" in *\" $$model \"*) continue ;; esac; ollama pull \"$$model\"; seen=\"$$seen$$model \"; done"]
+    command: ["until ollama list > /dev/null 2>&1; do echo 'Waiting for Ollama provider...'; sleep 1; done; set -eu; seen=' '; for model in $${NEXO_OLLAMA_MODELS}; do case \"$$seen\" in *\" $$model \"*) continue ;; esac; ollama pull \"$$model\"; seen=\"$$seen$$model\"; done"]
     networks:
       - nexo-network
 
